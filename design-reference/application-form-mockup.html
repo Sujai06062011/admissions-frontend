@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Apply — MBA Finance</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0E3B4D;
+    --ink-light: #1B7A8C;
+    --gold: #F0A93E;
+    --gold-soft: #FDF0DA;
+    --bg: #F5FAFA;
+    --surface: #FFFFFF;
+    --border: #DCE7E8;
+    --text: #16292E;
+    --text-muted: #5E7679;
+    --forest: #2E9E6E;
+    --forest-soft: #DFF3EC;
+    --brick: #C2604A;
+    --brick-soft: #F9E7E1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  /* Dev-only state switcher, not part of real product */
+  .dev-tabs { position: fixed; top: 16px; right: 16px; display: flex; gap: 6px; z-index: 50; background: #fff; padding: 5px; border-radius: 10px; border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(14,59,77,0.08); }
+  .dev-tab { padding: 6px 12px; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--text-muted); border: none; background: none; }
+  .dev-tab.active { background: var(--ink); color: #fff; }
+
+  .page { max-width: 640px; margin: 0 auto; padding: 56px 24px 80px; display: none; }
+  .page.active { display: block; }
+
+  .brand-row { display: flex; align-items: center; gap: 10px; margin-bottom: 40px; }
+  .brand-mark { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--gold), #C4841F); display: flex; align-items: center; justify-content: center; font-family: 'Source Serif 4', serif; font-weight: 700; color: var(--ink); font-size: 14px; }
+  .brand-name { font-family: 'Source Serif 4', serif; font-weight: 600; font-size: 15px; color: var(--ink); }
+
+  /* Stepper */
+  .stepper { display: flex; align-items: center; margin-bottom: 44px; }
+  .step { display: flex; align-items: center; gap: 9px; }
+  .step-dot { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .step.done .step-dot { background: var(--forest); color: #fff; }
+  .step.active .step-dot { background: var(--ink); color: #fff; }
+  .step.upcoming .step-dot { background: #E4EDEE; color: var(--text-muted); }
+  .step-label { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+  .step.active .step-label { color: var(--ink); }
+  .step-line { flex: 1; height: 1.5px; background: var(--border); margin: 0 10px; }
+  .step-line.done { background: var(--forest); }
+
+  h1 { font-family: 'Source Serif 4', serif; font-size: 27px; font-weight: 600; margin-bottom: 6px; }
+  .subhead { font-size: 13.5px; color: var(--text-muted); margin-bottom: 34px; }
+
+  .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 26px 28px; margin-bottom: 20px; }
+  .section-title { font-family: 'Source Serif 4', serif; font-size: 16.5px; font-weight: 600; margin-bottom: 3px; }
+  .section-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  input[type=text], input[type=email], input[type=tel] {
+    width: 100%; padding: 11px 13px; border: 1.5px solid var(--border); border-radius: 9px;
+    font-size: 14px; font-family: 'Inter', sans-serif; color: var(--text); background: #fff;
+  }
+  input:focus { outline: none; border-color: var(--ink-light); }
+
+  /* Document upload cards */
+  .doc-list { display: flex; flex-direction: column; gap: 12px; }
+  .doc-item {
+    display: flex; align-items: center; justify-content: space-between;
+    border: 1.5px dashed var(--border); border-radius: 11px; padding: 15px 18px;
+  }
+  .doc-item.uploaded { border-style: solid; border-color: var(--forest); background: var(--forest-soft); }
+  .doc-info { display: flex; align-items: center; gap: 12px; }
+  .doc-icon { width: 36px; height: 36px; border-radius: 9px; background: #E9EDF5; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .doc-item.uploaded .doc-icon { background: var(--forest); color: #fff; }
+  .doc-name { font-size: 13.5px; font-weight: 600; }
+  .doc-required { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .doc-item.uploaded .doc-required { color: var(--forest); font-weight: 600; }
+  .upload-btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; border: 1.5px solid var(--ink); color: var(--ink); background: #fff; cursor: pointer; }
+  .doc-item.uploaded .upload-btn { border-color: var(--forest); color: var(--forest); }
+  .add-more { font-size: 12.5px; font-weight: 600; color: var(--ink-light); margin-top: 12px; cursor: pointer; display: inline-block; }
+
+  .footer-actions { display: flex; justify-content: flex-end; margin-top: 28px; }
+  .btn-continue { padding: 12px 26px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 600; border: none; cursor: pointer; }
+  .btn-continue:hover { background: #0A2E3C; }
+
+  .consent-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 4px; }
+  .consent-row input { margin-top: 3px; }
+  .consent-row span { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+  /* Processing state */
+  .processing-wrap { text-align: center; padding: 60px 20px; }
+  .processing-ring { width: 64px; height: 64px; border-radius: 50%; border: 4px solid var(--border); border-top-color: var(--gold); margin: 0 auto 24px; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .processing-wrap h2 { font-family: 'Source Serif 4', serif; font-size: 20px; margin-bottom: 8px; }
+  .processing-wrap p { font-size: 13.5px; color: var(--text-muted); max-width: 380px; margin: 0 auto; }
+  .processing-list { margin-top: 32px; display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin-left: auto; margin-right: auto; text-align: left; }
+  .processing-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .processing-item .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--forest); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .processing-item .dot::after { content: '✓'; color: #fff; font-size: 9px; }
+  .processing-item.pending .dot { background: var(--border); }
+  .processing-item.pending span { color: var(--text-muted); }
+
+  /* Review state */
+  .review-field { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .review-field:last-child { border-bottom: none; }
+  .review-label { font-size: 12px; color: var(--text-muted); }
+  .review-value { font-size: 13.5px; font-weight: 600; text-align: right; }
+  .extracted-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: var(--gold); background: var(--gold-soft); padding: 2px 7px; border-radius: 20px; margin-left: 8px; }
+  .low-confidence { color: var(--brick) !important; }
+  .low-confidence-tag { background: var(--brick-soft) !important; color: var(--brick) !important; }
+</style>
+</head>
+<body>
+
+<div class="dev-tabs">
+  <button class="dev-tab active" onclick="showPage('form')">1 · Form</button>
+  <button class="dev-tab" onclick="showPage('processing')">2 · Processing</button>
+  <button class="dev-tab" onclick="showPage('review')">3 · Review</button>
+</div>
+
+<!-- SCREEN 1: Basic info + document upload -->
+<div class="page active" id="page-form">
+  <div class="brand-row"><div class="brand-mark">A</div><div class="brand-name">MBA Finance — Class of 2026</div></div>
+
+  <div class="stepper">
+    <div class="step active"><div class="step-dot">1</div><div class="step-label">Basic Info</div></div>
+    <div class="step-line"></div>
+    <div class="step upcoming"><div class="step-dot">2</div><div class="step-label">Review</div></div>
+    <div class="step-line"></div>
+    <div class="step upcoming"><div class="step-dot">3</div><div class="step-label">Submit</div></div>
+  </div>
+
+  <h1>Start your application</h1>
+  <div class="subhead">Just a few details, then upload your documents — we'll fill in the rest.</div>
+
+  <div class="section-card">
+    <div class="section-title">Basic Information</div>
+    <div class="section-sub">We'll use these to send your application updates and login details.</div>
+    <div class="field"><label>Full Name</label><input type="text" placeholder="As per your official documents"></div>
+    <div class="field"><label>Mobile Number</label><input type="tel" placeholder="+91 98765 43210"></div>
+    <div class="field"><label>Email Address</label><input type="email" placeholder="you@example.com"></div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-title">Upload Your Documents</div>
+    <div class="section-sub">We'll read these automatically and pre-fill your academic details — you'll get a chance to review everything before submitting.</div>
+    <div class="doc-list">
+      <div class="doc-item uploaded">
+        <div class="doc-info"><div class="doc-icon">✓</div><div><div class="doc-name">10th Marksheet</div><div class="doc-required">tenth_marksheet.pdf</div></div></div>
+        <button class="upload-btn">Replace</button>
+      </div>
+      <div class="doc-item uploaded">
+        <div class="doc-info"><div class="doc-icon">✓</div><div><div class="doc-name">12th Marksheet</div><div class="doc-required">twelfth_marksheet.pdf</div></div></div>
+        <button class="upload-btn">Replace</button>
+      </div>
+      <div class="doc-item">
+        <div class="doc-info"><div class="doc-icon">📄</div><div><div class="doc-name">UG Marksheet</div><div class="doc-required">Required</div></div></div>
+        <button class="upload-btn">Upload</button>
+      </div>
+      <div class="doc-item">
+        <div class="doc-info"><div class="doc-icon">📄</div><div><div class="doc-name">PG Marksheet</div><div class="doc-required">Optional</div></div></div>
+        <button class="upload-btn">Upload</button>
+      </div>
+      <div class="doc-item">
+        <div class="doc-info"><div class="doc-icon">📄</div><div><div class="doc-name">Certifications</div><div class="doc-required">Optional · add as many as you like</div></div></div>
+        <button class="upload-btn">Upload</button>
+      </div>
+    </div>
+    <div class="add-more">+ Add another certification</div>
+  </div>
+
+  <div class="section-card">
+    <div class="consent-row">
+      <input type="checkbox" id="c1"><span>I confirm the information provided is accurate to the best of my knowledge.</span>
+    </div>
+    <div class="consent-row" style="margin-top:10px">
+      <input type="checkbox" id="c2"><span>I consent to my documents being processed by AI for verification, and to my campus test and interview being recorded and evaluated as part of this admissions process.</span>
+    </div>
+  </div>
+
+  <div class="footer-actions">
+    <button class="btn-continue" onclick="showPage('processing')">Continue →</button>
+  </div>
+</div>
+
+<!-- SCREEN 2: Processing -->
+<div class="page" id="page-processing">
+  <div class="brand-row"><div class="brand-mark">A</div><div class="brand-name">MBA Finance — Class of 2026</div></div>
+  <div class="processing-wrap">
+    <div class="processing-ring"></div>
+    <h2>Reading your documents...</h2>
+    <p>This usually takes under a minute. We're extracting your academic details so you don't have to type them in.</p>
+    <div class="processing-list">
+      <div class="processing-item"><div class="dot"></div><span>10th Marksheet — extracted</span></div>
+      <div class="processing-item"><div class="dot"></div><span>12th Marksheet — extracted</span></div>
+      <div class="processing-item pending"><div class="dot"></div><span>UG Marksheet — processing...</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 3: Review -->
+<div class="page" id="page-review">
+  <div class="brand-row"><div class="brand-mark">A</div><div class="brand-name">MBA Finance — Class of 2026</div></div>
+
+  <div class="stepper">
+    <div class="step done"><div class="step-dot">✓</div><div class="step-label">Basic Info</div></div>
+    <div class="step-line done"></div>
+    <div class="step active"><div class="step-dot">2</div><div class="step-label">Review</div></div>
+    <div class="step-line"></div>
+    <div class="step upcoming"><div class="step-dot">3</div><div class="step-label">Submit</div></div>
+  </div>
+
+  <h1>Review your details</h1>
+  <div class="subhead">We've pre-filled this from your documents — please check everything carefully before submitting.</div>
+
+  <div class="section-card">
+    <div class="section-title">10th Standard</div>
+    <div class="review-field"><span class="review-label">Board</span><span class="review-value">CBSE <span class="extracted-tag">Auto-filled</span></span></div>
+    <div class="review-field"><span class="review-label">School</span><span class="review-value">Delhi Public School <span class="extracted-tag">Auto-filled</span></span></div>
+    <div class="review-field"><span class="review-label">Percentage</span><span class="review-value low-confidence">91.2% <span class="extracted-tag low-confidence-tag">Please verify</span></span></div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-title">12th Standard</div>
+    <div class="review-field"><span class="review-label">Board</span><span class="review-value">CBSE <span class="extracted-tag">Auto-filled</span></span></div>
+    <div class="review-field"><span class="review-label">Percentage</span><span class="review-value">88.4% <span class="extracted-tag">Auto-filled</span></span></div>
+  </div>
+
+  <div class="footer-actions">
+    <button class="btn-continue">Looks good, continue →</button>
+  </div>
+</div>
+
+<script>
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + id).classList.add('active');
+    document.querySelectorAll('.dev-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>
