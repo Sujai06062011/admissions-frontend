@@ -1,26 +1,42 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #0e3b4d;
+  --ink-light: #1b7a8c;
+  --ink-dark: #0a2e3c;
+  --gold: #f0a93e;
+  --gold-soft: #fdf0da;
+  --bg: #f5fafa;
+  --surface: #ffffff;
+  --border: #dce7e8;
+  --text: #16292e;
+  --text-muted: #5e7679;
+  --forest: #2e9e6e;
+  --forest-soft: #dff3ec;
+  --brick: #c2604a;
+  --brick-soft: #f9e7e1;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-ink: var(--ink);
+  --color-ink-light: var(--ink-light);
+  --color-ink-dark: var(--ink-dark);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-forest: var(--forest);
+  --color-forest-soft: var(--forest-soft);
+  --color-brick: var(--brick);
+  --color-brick-soft: var(--brick-soft);
+  --font-serif: var(--font-source-serif-4);
+  --font-sans: var(--font-inter);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
 }
