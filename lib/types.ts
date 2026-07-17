@@ -4,7 +4,10 @@ export type DocType =
   | "12th_marksheet"
   | "ug_marksheet"
   | "pg_marksheet"
-  | "certifications";
+  | "certifications"
+  | "address_proof"
+  | "id_proof"
+  | "experience_certificate";
 
 export type ApplicationStatus =
   | "submitted"
@@ -36,6 +39,8 @@ export interface Application {
   program_id: string;
   applicant_id: string;
   status: ApplicationStatus;
+  sequence_number: number;
+  application_number: string;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -46,16 +51,14 @@ export interface ApplicationSubmissionResponse {
   profile_data: ProfileData;
 }
 
-export interface ParsedMarksheetFields {
-  board_or_university: string | null;
-  percentage: number | null;
-  cgpa: number | null;
-  year: number | null;
+export interface CertificationEntry {
+  name: string;
+  issuer: string | null;
 }
 
 export interface OcrResult {
   raw_text: string;
-  parsed: ParsedMarksheetFields;
+  parsed: Record<string, unknown>;
   confidence: number;
 }
 

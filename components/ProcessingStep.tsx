@@ -32,7 +32,11 @@ export function ProcessingStep({ applicationId, onComplete }: ProcessingStepProp
         setProfile(result);
         setError(null);
 
-        const allDone = result.documents.every((doc) => doc.ocr_result !== null);
+        // Experience certificates have no review fields — don't block on their OCR.
+        const docsAwaitingOcr = result.documents.filter(
+          (doc) => doc.doc_type !== "experience_certificate",
+        );
+        const allDone = docsAwaitingOcr.every((doc) => doc.ocr_result !== null);
         if (allDone) {
           stoppedRef.current = true;
           onComplete(result);

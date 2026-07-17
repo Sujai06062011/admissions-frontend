@@ -85,7 +85,7 @@ export function DocumentUploadCard({
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        {isUploaded && onRemove && (
+        {onRemove && (
           <button
             type="button"
             onClick={onRemove}

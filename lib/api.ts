@@ -31,6 +31,8 @@ export interface CreateApplicationInput {
   fullName: string;
   email: string;
   phone: string;
+  dob: string;
+  gender: string;
 }
 
 export async function createApplication(
@@ -47,7 +49,7 @@ export async function createApplication(
         email: input.email,
         phone: input.phone,
       },
-      profile: { data: {} },
+      profile: { data: { dob: input.dob, gender: input.gender } },
     }),
   });
 

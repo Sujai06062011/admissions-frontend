@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Stepper } from "./Stepper";
 import { DocumentUploadCard, type DocSlotStatus } from "./DocumentUploadCard";
 import {
   CERTIFICATIONS_DOC_TYPE,
+  EXPERIENCE_CERTIFICATE_DOC_TYPE,
   FIXED_DOCUMENT_SLOTS,
 } from "@/lib/documentTypes";
 import { ApiError, createApplication, uploadDocument } from "@/lib/api";
+import { createExperienceEntry, isMeaningfulExperienceEntry, type ExperienceEntry } from "@/lib/experience";
 import type { DocType } from "@/lib/types";
 
 interface FixedSlotState {
@@ -43,24 +45,33 @@ function isValidPhone(value: string) {
   return value.replace(/\D/g, "").length >= 10;
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export interface BasicInfoStepProps {
-  onComplete: (applicationId: string) => void;
+  onComplete: (applicationId: string, experienceEntries: ExperienceEntry[]) => void;
 }
 
 export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [dob, setDob] = useState("");
+  const [gender, setGender] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [creatingApplication, setCreatingApplication] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const applicationPromiseRef = useRef<Promise<string | null> | null>(null);
 
   const [fixedSlots, setFixedSlots] = useState<FixedSlots>(initialFixedSlots());
   const [certSlots, setCertSlots] = useState<CertSlot[]>([
     { id: crypto.randomUUID(), status: "idle" },
   ]);
+
+  const [experienceEntries, setExperienceEntries] = useState<ExperienceEntry[]>([]);
 
   const [consentAccurate, setConsentAccurate] = useState(false);
   const [consentProcessing, setConsentProcessing] = useState(false);
@@ -78,30 +89,45 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
     if (!email.trim() || !isValidEmail(email)) {
       errors.email = "Enter a valid email address";
     }
+    if (!dob) {
+      errors.dob = "Date of birth is required";
+    } else if (dob > todayIsoDate()) {
+      errors.dob = "Date of birth can't be in the future";
+    }
+    if (!gender) {
+      errors.gender = "Please select a gender";
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
 
   async function ensureApplication(): Promise<string | null> {
     if (applicationId) return applicationId;
+    if (applicationPromiseRef.current) return applicationPromiseRef.current;
     if (!validateBasicInfo()) return null;
 
-    setCreatingApplication(true);
-    setFormError(null);
-    try {
-      const result = await createApplication({ fullName, phone, email });
-      setApplicationId(result.application.id);
-      return result.application.id;
-    } catch (error) {
-      setFormError(
-        error instanceof ApiError
-          ? `Couldn't start your application: ${error.message}`
-          : "Couldn't start your application. Check your connection and try again.",
-      );
-      return null;
-    } finally {
-      setCreatingApplication(false);
-    }
+    const promise = (async () => {
+      setCreatingApplication(true);
+      setFormError(null);
+      try {
+        const result = await createApplication({ fullName, phone, email, dob, gender });
+        setApplicationId(result.application.id);
+        return result.application.id;
+      } catch (error) {
+        setFormError(
+          error instanceof ApiError
+            ? `Couldn't start your application: ${error.message}`
+            : "Couldn't start your application. Check your connection and try again.",
+        );
+        applicationPromiseRef.current = null;
+        return null;
+      } finally {
+        setCreatingApplication(false);
+      }
+    })();
+
+    applicationPromiseRef.current = promise;
+    return promise;
   }
 
   async function handleFixedUpload(docType: DocType, file: File) {
@@ -185,6 +211,13 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
     }
   }
 
+  function removeFixedSlot(docType: DocType) {
+    setFixedSlots((prev) => ({
+      ...prev,
+      [docType]: { status: "idle" },
+    }));
+  }
+
   function addCertSlot() {
     setCertSlots((prev) => [...prev, { id: crypto.randomUUID(), status: "idle" }]);
   }
@@ -196,12 +229,84 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
     });
   }
 
+  function addExperienceEntry() {
+    setExperienceEntries((prev) => [...prev, createExperienceEntry()]);
+  }
+
+  function removeExperienceEntry(entryId: string) {
+    setExperienceEntries((prev) => prev.filter((entry) => entry.id !== entryId));
+  }
+
+  function updateExperienceField(
+    entryId: string,
+    key: "company" | "role" | "from" | "to",
+    value: string,
+  ) {
+    setExperienceEntries((prev) =>
+      prev.map((entry) => (entry.id === entryId ? { ...entry, [key]: value } : entry)),
+    );
+  }
+
+  async function handleExperienceFileUpload(entryId: string, file: File) {
+    const appId = await ensureApplication();
+    if (!appId) return;
+
+    setExperienceEntries((prev) =>
+      prev.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, fileStatus: "uploading", fileName: file.name }
+          : entry,
+      ),
+    );
+
+    try {
+      const document = await uploadDocument(appId, EXPERIENCE_CERTIFICATE_DOC_TYPE, file);
+      setExperienceEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === entryId
+            ? {
+                ...entry,
+                fileStatus: "uploaded",
+                fileName: file.name,
+                documentId: document.id,
+              }
+            : entry,
+        ),
+      );
+    } catch (error) {
+      setExperienceEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === entryId
+            ? {
+                ...entry,
+                fileStatus: "error",
+                fileName: file.name,
+                fileErrorMessage:
+                  error instanceof ApiError ? error.message : "Upload failed. Try again.",
+              }
+            : entry,
+        ),
+      );
+    }
+  }
+
+  function removeExperienceFile(entryId: string) {
+    setExperienceEntries((prev) =>
+      prev.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, fileStatus: "idle", fileName: undefined, documentId: undefined }
+          : entry,
+      ),
+    );
+  }
+
   const requiredSlotsUploaded = FIXED_DOCUMENT_SLOTS.filter((c) => c.required).every(
     (c) => fixedSlots[c.docType]?.status === "uploaded",
   );
   const noUploadsInFlight =
     Object.values(fixedSlots).every((s) => s.status !== "uploading") &&
-    certSlots.every((s) => s.status !== "uploading");
+    certSlots.every((s) => s.status !== "uploading") &&
+    experienceEntries.every((e) => e.fileStatus !== "uploading");
   const canContinue =
     requiredSlotsUploaded &&
     consentAccurate &&
@@ -215,7 +320,7 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
     const appId = await ensureApplication();
     if (!appId) return;
     setSubmitting(true);
-    onComplete(appId);
+    onComplete(appId, experienceEntries.filter(isMeaningfulExperienceEntry));
   }
 
   const missingRequired = FIXED_DOCUMENT_SLOTS.filter(
@@ -312,6 +417,48 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
           )}
         </div>
 
+        <div className="mt-4">
+          <label className="block text-[12.5px] font-semibold mb-1.5">
+            Date of Birth
+          </label>
+          <input
+            type="date"
+            value={dob}
+            disabled={isLocked}
+            max={todayIsoDate()}
+            onChange={(e) => setDob(e.target.value)}
+            className="w-full px-[13px] py-[11px] border-[1.5px] border-border rounded-[9px] text-sm bg-white focus:outline-none focus:border-ink-light disabled:bg-[#F5FAFA] disabled:text-text-muted"
+          />
+          {fieldErrors.dob && (
+            <div className="text-brick text-[11.5px] font-medium mt-1.5">
+              {fieldErrors.dob}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-[12.5px] font-semibold mb-1.5">
+            Gender
+          </label>
+          <select
+            value={gender}
+            disabled={isLocked}
+            onChange={(e) => setGender(e.target.value)}
+            className="w-full px-[13px] py-[11px] border-[1.5px] border-border rounded-[9px] text-sm bg-white focus:outline-none focus:border-ink-light disabled:bg-[#F5FAFA] disabled:text-text-muted"
+          >
+            <option value="">Select</option>
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="other">Other</option>
+            <option value="prefer_not_to_say">Prefer not to say</option>
+          </select>
+          {fieldErrors.gender && (
+            <div className="text-brick text-[11.5px] font-medium mt-1.5">
+              {fieldErrors.gender}
+            </div>
+          )}
+        </div>
+
         {isLocked && (
           <div className="text-[11px] text-text-muted mt-3">
             Locked after your first document upload.
@@ -341,6 +488,11 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
                 fileName={slot.fileName}
                 errorMessage={slot.errorMessage}
                 onSelectFile={(file) => handleFixedUpload(config.docType, file)}
+                onRemove={
+                  slot.status === "uploaded" || slot.status === "error"
+                    ? () => removeFixedSlot(config.docType)
+                    : undefined
+                }
               />
             );
           })}
@@ -357,7 +509,7 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
               errorMessage={slot.errorMessage}
               onSelectFile={(file) => handleCertUpload(slot.id, file)}
               onRemove={
-                slot.status === "uploaded"
+                slot.status !== "idle" || certSlots.length > 1
                   ? () => removeCertSlot(slot.id)
                   : undefined
               }
@@ -371,6 +523,119 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
           className="text-[12.5px] font-semibold text-ink-light mt-3 inline-block cursor-pointer"
         >
           + Add another certification
+        </button>
+      </div>
+
+      <div className="bg-surface border border-border rounded-[14px] px-[28px] py-[26px] mb-5">
+        <div className="font-serif text-[16.5px] font-semibold mb-1">
+          Professional Experience
+        </div>
+        <div className="text-xs text-text-muted mb-5">
+          Optional — add any relevant work experience, with a supporting
+          certificate if you have one.
+        </div>
+
+        {experienceEntries.length > 0 && (
+          <div className="flex flex-col gap-5">
+            {experienceEntries.map((entry, index) => (
+              <div
+                key={entry.id}
+                className="border border-border rounded-[11px] px-4 py-4"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[12.5px] font-semibold">
+                    Experience {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeExperienceEntry(entry.id)}
+                    className="text-[12px] font-semibold text-text-muted hover:text-brick cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11.5px] font-semibold mb-1">
+                      Company
+                    </label>
+                    <input
+                      type="text"
+                      value={entry.company}
+                      onChange={(e) =>
+                        updateExperienceField(entry.id, "company", e.target.value)
+                      }
+                      className="w-full px-[11px] py-2 border-[1.5px] border-border rounded-[8px] text-[13px] bg-white focus:outline-none focus:border-ink-light"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] font-semibold mb-1">
+                      Role
+                    </label>
+                    <input
+                      type="text"
+                      value={entry.role}
+                      onChange={(e) =>
+                        updateExperienceField(entry.id, "role", e.target.value)
+                      }
+                      className="w-full px-[11px] py-2 border-[1.5px] border-border rounded-[8px] text-[13px] bg-white focus:outline-none focus:border-ink-light"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] font-semibold mb-1">
+                      From
+                    </label>
+                    <input
+                      type="date"
+                      value={entry.from}
+                      max={todayIsoDate()}
+                      onChange={(e) =>
+                        updateExperienceField(entry.id, "from", e.target.value)
+                      }
+                      className="w-full px-[11px] py-2 border-[1.5px] border-border rounded-[8px] text-[13px] bg-white focus:outline-none focus:border-ink-light"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] font-semibold mb-1">
+                      To
+                    </label>
+                    <input
+                      type="date"
+                      value={entry.to}
+                      max={todayIsoDate()}
+                      onChange={(e) =>
+                        updateExperienceField(entry.id, "to", e.target.value)
+                      }
+                      className="w-full px-[11px] py-2 border-[1.5px] border-border rounded-[8px] text-[13px] bg-white focus:outline-none focus:border-ink-light"
+                    />
+                  </div>
+                </div>
+
+                <DocumentUploadCard
+                  label="Certificate"
+                  helperText="Optional"
+                  status={entry.fileStatus}
+                  fileName={entry.fileName}
+                  errorMessage={entry.fileErrorMessage}
+                  onSelectFile={(file) => handleExperienceFileUpload(entry.id, file)}
+                  onRemove={
+                    entry.fileStatus === "uploaded" || entry.fileStatus === "error"
+                      ? () => removeExperienceFile(entry.id)
+                      : undefined
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={addExperienceEntry}
+          className="text-[12.5px] font-semibold text-ink-light mt-4 inline-block cursor-pointer"
+        >
+          + Add experience
         </button>
       </div>
 
