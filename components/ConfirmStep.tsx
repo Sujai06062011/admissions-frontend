@@ -171,6 +171,45 @@ interface MismatchSummary {
   editedFields: EditedFieldMismatch[];
 }
 
+function DiffRow({
+  title,
+  before,
+  after,
+  tone,
+}: {
+  title: string;
+  before: string;
+  after: string;
+  tone: "brick" | "gold";
+}) {
+  const afterClasses =
+    tone === "brick"
+      ? "bg-brick-soft border-brick/30 text-brick"
+      : "bg-gold-soft border-gold/30 text-gold";
+  return (
+    <div className="py-3.5 border-b border-border last:border-b-0">
+      <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">
+        {title}
+      </div>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
+        <div className="min-w-0 rounded-[9px] border border-border bg-[#F5FAFA] px-3 py-2">
+          <div className="text-[10px] font-semibold text-text-muted mb-0.5">On your documents</div>
+          <div className="text-[13.5px] font-semibold truncate" title={before}>
+            {before}
+          </div>
+        </div>
+        <div className="flex items-center text-text-muted text-[15px]">→</div>
+        <div className={`min-w-0 rounded-[9px] border px-3 py-2 ${afterClasses}`}>
+          <div className="text-[10px] font-semibold mb-0.5">You entered</div>
+          <div className="text-[13.5px] font-semibold text-text truncate" title={after}>
+            {after}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SectionHeader({
   title,
   editable,
@@ -411,42 +450,29 @@ export function ConfirmStep({
           </div>
         )}
 
-        {mismatches.nameMismatch && (
-          <div className="bg-surface border-[1.5px] border-brick/40 rounded-[14px] px-[28px] py-[26px] mb-5">
-            <div className="font-serif text-[15px] font-semibold mb-3 text-brick">Name mismatch</div>
-            <div className="flex justify-between py-[11px] border-b border-border text-[13.5px]">
-              <span className="text-xs text-text-muted">Name you entered</span>
-              <span className="font-semibold">{mismatches.nameMismatch.enteredName}</span>
+        {(mismatches.nameMismatch || mismatches.editedFields.length > 0) && (
+          <div className="bg-surface border border-border rounded-[14px] px-[28px] py-[24px] mb-5">
+            <div className="font-serif text-[16.5px] font-semibold mb-1">What&apos;s different</div>
+            <div className="text-xs text-text-muted mb-1">
+              Everything below was auto-filled from your documents, then changed. Make sure each
+              change is correct.
             </div>
-            <div className="flex justify-between py-[11px] text-[13.5px]">
-              <span className="text-xs text-text-muted">Name on your documents</span>
-              <span className="font-semibold">{mismatches.nameMismatch.extractedName}</span>
-            </div>
-          </div>
-        )}
-
-        {mismatches.editedFields.length > 0 && (
-          <div className="bg-surface border-[1.5px] border-gold/40 rounded-[14px] px-[28px] py-[26px] mb-5">
-            <div className="font-serif text-[15px] font-semibold mb-3 text-gold">
-              Edited auto-filled values
-            </div>
+            {mismatches.nameMismatch && (
+              <DiffRow
+                title="Full Name"
+                before={mismatches.nameMismatch.extractedName}
+                after={mismatches.nameMismatch.enteredName}
+                tone="brick"
+              />
+            )}
             {mismatches.editedFields.map((item, index) => (
-              <div
+              <DiffRow
                 key={index}
-                className="py-[11px] border-b border-border last:border-b-0 text-[13.5px]"
-              >
-                <div className="text-xs text-text-muted mb-1.5">
-                  {item.sectionTitle} — {item.label}
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-muted">
-                    Auto-filled from document: <strong className="text-text">{item.original}</strong>
-                  </span>
-                  <span className="text-text-muted">
-                    Your entry: <strong className="text-text">{item.edited}</strong>
-                  </span>
-                </div>
-              </div>
+                title={`${item.sectionTitle} · ${item.label}`}
+                before={item.original}
+                after={item.edited}
+                tone="gold"
+              />
             ))}
           </div>
         )}
