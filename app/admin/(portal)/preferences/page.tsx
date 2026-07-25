@@ -8,6 +8,7 @@ import { simulateImpact, type HypotheticalPreferenceConfig } from "@/lib/adminMa
 import type { PreferenceConfigResponse } from "@/lib/adminTypes";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
+import { Toggle } from "@/components/admin/Toggle";
 
 interface FieldDef {
   field_name: string;
@@ -20,6 +21,7 @@ interface FieldDef {
 const FIELD_DEFS: FieldDef[] = [
   { field_name: "10th_percentage", label: "10th Percentage", supportsHardCutoff: true, maxCutoff: 100, unit: "%" },
   { field_name: "12th_percentage", label: "12th Percentage", supportsHardCutoff: true, maxCutoff: 100, unit: "%" },
+  { field_name: "ug_percentage", label: "UG Percentage", supportsHardCutoff: true, maxCutoff: 100, unit: "%" },
   { field_name: "experience_years", label: "Professional Experience", supportsHardCutoff: true, maxCutoff: 15, unit: "yr" },
   { field_name: "certifications_count", label: "Certifications & Courses", supportsHardCutoff: true, maxCutoff: 10, unit: "" },
   { field_name: "test_a_score", label: "Campus Test — Test A", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
@@ -28,8 +30,18 @@ const FIELD_DEFS: FieldDef[] = [
 
 interface FieldState {
   field_name: string;
-  is_hard_cutoff: boolean;
+  /** Whether this field is enforced as a hard cutoff — independent of the
+   * slider value, so a field can be switched off without losing its
+   * configured threshold. */
+  hard_cutoff_enabled: boolean;
   cutoff_value: number;
+  /** Whether this field contributes to the composite score — independent
+   * of the slider value for the same reason as above. Unlike cutoff_value,
+   * the backend has no separate "enabled" column for soft_weight, so
+   * disabling always persists as soft_weight=0 and the display value can't
+   * be recovered from the server after a reload (only within this editing
+   * session). */
+  weight_enabled: boolean;
   /** Display units — a 0-100 percentage, e.g. 30 means "30% weight". */
   soft_weight: number;
 }
@@ -50,8 +62,9 @@ function fieldStatesFromConfigs(configs: PreferenceConfigResponse[]): FieldState
     const existing = configs.find((c) => c.field_name === def.field_name);
     return {
       field_name: def.field_name,
-      is_hard_cutoff: existing?.is_hard_cutoff ?? false,
+      hard_cutoff_enabled: existing?.is_hard_cutoff ?? false,
       cutoff_value: existing?.cutoff_value ?? 0,
+      weight_enabled: (existing?.soft_weight ?? 0) > 0,
       soft_weight: (existing?.soft_weight ?? 0) * 100,
     };
   });
@@ -93,18 +106,22 @@ export default function PreferencesPage() {
     setFields(fieldStatesFromConfigs(configsQuery.data ?? []));
   }
 
-  const totalWeight = fields.reduce((sum, f) => sum + (f.soft_weight || 0), 0);
+  const totalWeight = fields.reduce((sum, f) => sum + (f.weight_enabled ? f.soft_weight : 0), 0);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const toSave = fields.filter((f) => f.is_hard_cutoff || f.soft_weight > 0);
+      const toSave = fields.filter((f) => f.hard_cutoff_enabled || f.weight_enabled);
       return replacePreferenceConfigs(
         PROGRAM_ID,
         toSave.map((f) => ({
           field_name: f.field_name,
-          is_hard_cutoff: f.is_hard_cutoff,
-          cutoff_value: f.is_hard_cutoff ? f.cutoff_value : null,
-          soft_weight: toStoredWeight(f.soft_weight),
+          is_hard_cutoff: f.hard_cutoff_enabled,
+          // Always send the real cutoff number, even when the hard-cutoff
+          // toggle is off, so re-enabling it later (without a page reload)
+          // or reading it back after a save shows the same threshold rather
+          // than resetting to 0.
+          cutoff_value: f.cutoff_value,
+          soft_weight: f.weight_enabled ? toStoredWeight(f.soft_weight) : 0,
         })),
       );
     },
@@ -132,12 +149,12 @@ export default function PreferencesPage() {
   );
 
   const hypotheticalConfigs: HypotheticalPreferenceConfig[] = fields
-    .filter((f) => f.is_hard_cutoff || f.soft_weight > 0)
+    .filter((f) => f.hard_cutoff_enabled || f.weight_enabled)
     .map((f) => ({
       field_name: f.field_name,
-      is_hard_cutoff: f.is_hard_cutoff,
-      cutoff_value: f.is_hard_cutoff ? f.cutoff_value : null,
-      soft_weight: toStoredWeight(f.soft_weight),
+      is_hard_cutoff: f.hard_cutoff_enabled,
+      cutoff_value: f.cutoff_value,
+      soft_weight: f.weight_enabled ? toStoredWeight(f.soft_weight) : 0,
     }));
 
   const impact = simulateImpact(candidateReasons, hypotheticalConfigs);
@@ -197,8 +214,21 @@ export default function PreferencesPage() {
                   return (
                     <div key={def.field_name}>
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[13px] font-semibold text-text">Minimum {def.label}</span>
-                        <span className="text-[13px] font-bold text-ink">
+                        <div className="flex items-center gap-2.5">
+                          <Toggle
+                            checked={state.hard_cutoff_enabled}
+                            onChange={(checked) => updateField(def.field_name, { hard_cutoff_enabled: checked })}
+                            label={`Enable minimum ${def.label} cutoff`}
+                          />
+                          <span
+                            className={`text-[13px] font-semibold ${state.hard_cutoff_enabled ? "text-text" : "text-text-muted"}`}
+                          >
+                            Minimum {def.label}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[13px] font-bold ${state.hard_cutoff_enabled ? "text-ink" : "text-text-muted"}`}
+                        >
                           {state.cutoff_value}
                           {def.unit}
                         </span>
@@ -208,10 +238,9 @@ export default function PreferencesPage() {
                         min={0}
                         max={def.maxCutoff}
                         value={state.cutoff_value}
-                        onChange={(e) =>
-                          updateField(def.field_name, { cutoff_value: Number(e.target.value), is_hard_cutoff: true })
-                        }
-                        className="w-full accent-ink"
+                        disabled={!state.hard_cutoff_enabled}
+                        onChange={(e) => updateField(def.field_name, { cutoff_value: Number(e.target.value) })}
+                        className="w-full accent-ink disabled:opacity-40"
                       />
                     </div>
                   );
@@ -230,16 +259,32 @@ export default function PreferencesPage() {
                   return (
                     <div key={def.field_name}>
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[13px] font-semibold text-text">{def.label}</span>
-                        <span className="text-[13px] font-bold text-gold">{state.soft_weight}%</span>
+                        <div className="flex items-center gap-2.5">
+                          <Toggle
+                            checked={state.weight_enabled}
+                            onChange={(checked) => updateField(def.field_name, { weight_enabled: checked })}
+                            label={`Include ${def.label} in composite score`}
+                          />
+                          <span
+                            className={`text-[13px] font-semibold ${state.weight_enabled ? "text-text" : "text-text-muted"}`}
+                          >
+                            {def.label}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[13px] font-bold ${state.weight_enabled ? "text-gold" : "text-text-muted"}`}
+                        >
+                          {state.soft_weight}%
+                        </span>
                       </div>
                       <input
                         type="range"
                         min={0}
                         max={100}
                         value={state.soft_weight}
+                        disabled={!state.weight_enabled}
                         onChange={(e) => updateField(def.field_name, { soft_weight: Number(e.target.value) })}
-                        className="w-full accent-gold"
+                        className="w-full accent-gold disabled:opacity-40"
                       />
                     </div>
                   );

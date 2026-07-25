@@ -161,6 +161,7 @@ export function reasonValue(reasons: PreferenceMatchReason[], fieldName: string)
 export const SCREENING_FIELD_NAMES = {
   tenthPercentage: "10th_percentage",
   twelfthPercentage: "12th_percentage",
+  ugPercentage: "ug_percentage",
   experienceYears: "experience_years",
   certificationsCount: "certifications_count",
 } as const;

@@ -227,6 +227,11 @@ export default function ApplicationsPage() {
       render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage) ?? "—",
     },
     {
+      key: "ug",
+      header: "UG",
+      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage) ?? "—",
+    },
+    {
       key: "exp",
       header: "Exp",
       render: (c) => {
@@ -314,6 +319,11 @@ export default function ApplicationsPage() {
       render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage) ?? "—",
     },
     {
+      key: "ug",
+      header: "UG",
+      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage) ?? "—",
+    },
+    {
       key: "exp",
       header: "Exp",
       render: (c) => {
@@ -367,6 +377,11 @@ export default function ApplicationsPage() {
       key: "twelfth",
       header: "12th",
       render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage) ?? "—",
+    },
+    {
+      key: "ug",
+      header: "UG",
+      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage) ?? "—",
     },
     {
       key: "test_a",

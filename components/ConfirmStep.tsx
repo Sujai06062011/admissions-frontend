@@ -76,6 +76,9 @@ function computeFlatMatchFields(
   const twelfth = percentageFor("12th_marksheet");
   if (twelfth !== null) flat["12th_percentage"] = twelfth;
 
+  const ug = percentageFor("ug_marksheet");
+  if (ug !== null) flat["ug_percentage"] = ug;
+
   const certificationDocs = profile.documents.filter((d) => d.doc_type === "certifications");
   if (certificationDocs.length > 0) {
     flat["certifications_count"] = certificationDocs.reduce((sum, doc) => {
