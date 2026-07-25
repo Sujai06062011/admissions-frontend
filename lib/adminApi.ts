@@ -321,9 +321,17 @@ export function deleteQuestion(questionId: string): Promise<void> {
   return adminFetch<void>(`/questions/${questionId}`, { method: "DELETE" });
 }
 
-export function bulkUploadQuestions(bankId: string, file: File): Promise<BulkUploadResult> {
+export function bulkUploadQuestions(
+  bankId: string,
+  file: File,
+  category?: QuestionCategory,
+): Promise<BulkUploadResult> {
   const formData = new FormData();
   formData.append("file", file);
+  // Default category for rows that don't carry their own `category` column
+  // (e.g. a single-category template like the logical-reasoning workbook) —
+  // rows with their own category value still take precedence server-side.
+  if (category) formData.append("category", category);
   return adminFetch<BulkUploadResult>(`/question-banks/${bankId}/questions/bulk-upload`, {
     method: "POST",
     body: formData,

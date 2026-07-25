@@ -157,7 +157,8 @@ export default function QuestionBankPage() {
   });
 
   const bulkUploadMutation = useMutation({
-    mutationFn: (file: File) => bulkUploadQuestions(selectedBankId as string, file),
+    mutationFn: (file: File) =>
+      bulkUploadQuestions(selectedBankId as string, file, categoryFilter || undefined),
     onSuccess: (result) => {
       invalidateQuestions();
       setBulkResult(result);
@@ -369,7 +370,7 @@ export default function QuestionBankPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.xlsx"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -381,9 +382,14 @@ export default function QuestionBankPage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={bulkUploadMutation.isPending}
+                    title={
+                      categoryFilter
+                        ? `Rows without their own "category" column will be tagged ${categoryLabel(categoryFilter)}.`
+                        : `Tip: pick a category above first if your file has no "category" column.`
+                    }
                     className="text-[12.5px] font-semibold border border-border rounded-lg px-3 py-2 text-text hover:bg-bg transition disabled:opacity-60"
                   >
-                    {bulkUploadMutation.isPending ? "Uploading…" : "Bulk Upload CSV"}
+                    {bulkUploadMutation.isPending ? "Uploading…" : "Bulk Upload CSV / XLSX"}
                   </button>
                   <button
                     type="button"
