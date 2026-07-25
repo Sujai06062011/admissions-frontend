@@ -19,9 +19,13 @@ export function ApplicationFlow() {
   const [reviewed, setReviewed] = useState<ReviewedData | null>(null);
   const [experienceEntries, setExperienceEntries] = useState<ExperienceEntry[]>([]);
 
-  if (step === "form") {
-    return (
-      <div className="max-w-[640px] mx-auto px-6 pt-14 pb-20">
+  return (
+    <>
+      {/* Kept mounted (just hidden) rather than conditionally rendered, so
+          going back from Review doesn't lose already-entered basic info or
+          already-uploaded document statuses — BasicInfoStep has no effects
+          of its own, so sitting hidden costs nothing. */}
+      <div className={step === "form" ? "max-w-[640px] mx-auto px-6 pt-14 pb-20" : "hidden"}>
         <BrandHeader />
         <BasicInfoStep
           onComplete={(id, entries) => {
@@ -31,52 +35,48 @@ export function ApplicationFlow() {
           }}
         />
       </div>
-    );
-  }
 
-  if (step === "processing" && applicationId) {
-    return (
-      <ProcessingStep
-        applicationId={applicationId}
-        onComplete={(result) => {
-          setProfile(result);
-          setStep("review");
-        }}
-      />
-    );
-  }
+      {step === "processing" && applicationId && (
+        <ProcessingStep
+          applicationId={applicationId}
+          onComplete={(result) => {
+            setProfile(result);
+            setStep("review");
+          }}
+        />
+      )}
 
-  if (step === "review" && profile) {
-    return (
-      <ReviewStep
-        profile={profile}
-        experienceEntries={experienceEntries}
-        initialValues={reviewed ?? undefined}
-        initialExperienceEntries={reviewed ? experienceEntries : undefined}
-        onContinue={(fields, entries) => {
-          setReviewed(fields);
-          setExperienceEntries(entries);
-          setStep("confirm");
-        }}
-      />
-    );
-  }
+      {step === "review" && profile && (
+        <ReviewStep
+          profile={profile}
+          experienceEntries={experienceEntries}
+          initialValues={reviewed ?? undefined}
+          initialExperienceEntries={reviewed ? experienceEntries : undefined}
+          onContinue={(fields, entries) => {
+            setReviewed(fields);
+            setExperienceEntries(entries);
+            setStep("confirm");
+          }}
+          onBack={() => setStep("form")}
+        />
+      )}
 
-  if (step === "confirm" && profile && reviewed) {
-    return (
-      <ConfirmStep
-        profile={profile}
-        reviewed={reviewed}
-        experienceEntries={experienceEntries}
-        onBack={() => setStep("review")}
-        onSubmitted={() => setStep("success")}
-      />
-    );
-  }
+      {step === "confirm" && profile && reviewed && (
+        <ConfirmStep
+          profile={profile}
+          reviewed={reviewed}
+          experienceEntries={experienceEntries}
+          onReviewedChange={setReviewed}
+          onExperienceChange={setExperienceEntries}
+          onBack={() => setStep("review")}
+          onSubmitted={(updatedProfile) => {
+            setProfile(updatedProfile);
+            setStep("success");
+          }}
+        />
+      )}
 
-  if (step === "success" && profile) {
-    return <SuccessStep profile={profile} />;
-  }
-
-  return null;
+      {step === "success" && profile && <SuccessStep profile={profile} />}
+    </>
+  );
 }

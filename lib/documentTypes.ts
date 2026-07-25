@@ -1,4 +1,4 @@
-import type { DocType } from "./types";
+import type { DocType, UploadedDocument } from "./types";
 
 export interface FixedDocConfig {
   docType: DocType;
@@ -45,6 +45,8 @@ export interface ReviewFieldSchemaEntry {
 }
 
 const MARKSHEET_FIELDS: ReviewFieldSchemaEntry[] = [
+  { key: "name_on_certificate", label: "Name on Certificate" },
+  { key: "institution_name", label: "School / College Name" },
   { key: "board_or_university", label: "Board / University" },
   { key: "percentage", label: "Percentage" },
   { key: "cgpa", label: "CGPA" },
@@ -82,3 +84,30 @@ export const REVIEW_SECTION_ORDER: DocType[] = [
   "ug_marksheet",
   "pg_marksheet",
 ];
+
+const REPEATABLE_DOC_TYPES = new Set<DocType>(["certifications", "experience_certificate"]);
+
+/**
+ * The backend now replaces a singleton doc_type's row on re-upload (see
+ * upload_document in app/applications/router.py), but applications created
+ * before that fix — or any other historical row insertion bug — can still
+ * have more than one row for a "one slot" doc_type like address_proof.
+ * Showing every one of them as a separate Review/Confirm section is
+ * confusing (a populated one plus a blank one), so this keeps only the most
+ * recently created row per non-repeatable doc_type.
+ */
+export function dedupeSingletonDocuments(documents: UploadedDocument[]): UploadedDocument[] {
+  const latestByType = new Map<string, UploadedDocument>();
+  const repeatable: UploadedDocument[] = [];
+  for (const doc of documents) {
+    if (REPEATABLE_DOC_TYPES.has(doc.doc_type)) {
+      repeatable.push(doc);
+      continue;
+    }
+    const existing = latestByType.get(doc.doc_type);
+    if (!existing || (doc.created_at ?? "") >= (existing.created_at ?? "")) {
+      latestByType.set(doc.doc_type, doc);
+    }
+  }
+  return [...latestByType.values(), ...repeatable];
+}

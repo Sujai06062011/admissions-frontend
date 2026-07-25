@@ -4,19 +4,16 @@ import { useMemo, useState } from "react";
 import { BrandHeader } from "./BrandHeader";
 import { Stepper } from "./Stepper";
 import {
+  dedupeSingletonDocuments,
   REVIEW_FIELD_SCHEMAS,
   REVIEW_SECTION_ORDER,
   REVIEW_SECTION_TITLES,
 } from "@/lib/documentTypes";
 import { isMeaningfulExperienceEntry, type ExperienceEntry } from "@/lib/experience";
-import type {
-  ApplicationProfileResponse,
-  CertificationEntry,
-  UploadedDocument,
-} from "@/lib/types";
+import { ocrFieldsFor, type ReviewedData, type ReviewedFields } from "@/lib/reviewFields";
+import type { ApplicationProfileResponse, CertificationEntry } from "@/lib/types";
 
-export type ReviewedFields = Record<string, string>;
-export type ReviewedData = Record<string, ReviewedFields>;
+export type { ReviewedData, ReviewedFields };
 
 export interface ReviewStepProps {
   profile: ApplicationProfileResponse;
@@ -24,19 +21,10 @@ export interface ReviewStepProps {
   initialValues?: ReviewedData;
   initialExperienceEntries?: ExperienceEntry[];
   onContinue: (reviewed: ReviewedData, experienceEntries: ExperienceEntry[]) => void;
+  onBack: () => void;
 }
 
 const CONFIDENCE_THRESHOLD = 0.7;
-
-function ocrFieldsFor(doc: UploadedDocument): ReviewedFields {
-  const schema = REVIEW_FIELD_SCHEMAS[doc.doc_type] ?? [];
-  const fields: ReviewedFields = {};
-  for (const { key } of schema) {
-    const value = doc.ocr_result?.parsed?.[key];
-    fields[key] = value != null ? String(value) : "";
-  }
-  return fields;
-}
 
 function FieldTag({
   touched,
@@ -115,19 +103,22 @@ export function ReviewStep({
   initialValues,
   initialExperienceEntries,
   onContinue,
+  onBack,
 }: ReviewStepProps) {
+  const dedupedDocuments = useMemo(() => dedupeSingletonDocuments(profile.documents), [profile]);
+
   const reviewableDocs = useMemo(
     () =>
-      profile.documents
+      dedupedDocuments
         .filter((doc) => REVIEW_FIELD_SCHEMAS[doc.doc_type] !== undefined)
         .sort(
           (a, b) =>
             REVIEW_SECTION_ORDER.indexOf(a.doc_type) -
             REVIEW_SECTION_ORDER.indexOf(b.doc_type),
         ),
-    [profile],
+    [dedupedDocuments],
   );
-  const certificationDocs = profile.documents.filter(
+  const certificationDocs = dedupedDocuments.filter(
     (doc) => doc.doc_type === "certifications",
   );
 
@@ -140,9 +131,17 @@ export function ReviewStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
-  const [fields, setFields] = useState<ReviewedData>(
-    () => initialValues ?? ocrFields,
-  );
+  // Merged rather than initialValues-or-ocrFields: if the candidate went
+  // back and replaced a document (new doc.id for the same doc_type — see
+  // dedupeSingletonDocuments), a stale initialValues snapshot keyed by the
+  // old id would leave the new document with no entry at all. Spreading
+  // fresh ocrFields first, then any still-relevant prior edits on top,
+  // keeps edits on untouched documents while giving replaced ones a clean
+  // fresh read.
+  const [fields, setFields] = useState<ReviewedData>(() => ({
+    ...ocrFields,
+    ...(initialValues ?? {}),
+  }));
   const [entries, setEntries] = useState<ExperienceEntry[]>(
     () => initialExperienceEntries ?? experienceEntries,
   );
@@ -191,8 +190,8 @@ export function ReviewStep({
       )}
 
       {reviewableDocs.map((doc) => {
-        const values = fields[doc.id];
         const original = ocrFields[doc.id];
+        const values = fields[doc.id] ?? original;
         const confidence = doc.ocr_result ? doc.ocr_confidence : null;
         const schema = REVIEW_FIELD_SCHEMAS[doc.doc_type] ?? [];
         return (
@@ -342,7 +341,14 @@ export function ReviewStep({
         </div>
       )}
 
-      <div className="flex justify-end mt-7">
+      <div className="flex justify-between mt-7">
+        <button
+          type="button"
+          onClick={onBack}
+          className="px-[26px] py-3 rounded-[10px] border-[1.5px] border-border text-text-muted text-sm font-semibold hover:border-ink hover:text-ink cursor-pointer"
+        >
+          ← Back
+        </button>
         <button
           type="button"
           onClick={() => onContinue(fields, meaningfulEntries)}

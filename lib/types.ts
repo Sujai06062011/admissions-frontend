@@ -26,6 +26,12 @@ export interface Applicant {
   created_at: string | null;
 }
 
+export interface ApplicantUpdateInput {
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
 export interface ProfileData {
   application_id: string;
   data: Record<string, unknown>;

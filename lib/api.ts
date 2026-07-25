@@ -1,5 +1,7 @@
 import { API_URL, PROGRAM_ID, TENANT_ID } from "./config";
 import type {
+  Applicant,
+  ApplicantUpdateInput,
   ApplicationProfileResponse,
   ApplicationSubmissionResponse,
   DocType,
@@ -92,6 +94,23 @@ export async function updateApplicationProfile(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ data }),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(await parseErrorMessage(response), response.status);
+  }
+
+  return response.json();
+}
+
+export async function updateApplicant(
+  applicationId: string,
+  input: ApplicantUpdateInput,
+): Promise<Applicant> {
+  const response = await fetch(`${API_URL}/applications/${applicationId}/applicant`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
 
   if (!response.ok) {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BrandHeader } from "./BrandHeader";
 import { ApiError, getApplication } from "@/lib/api";
-import { DOC_TYPE_LABELS } from "@/lib/documentTypes";
+import { dedupeSingletonDocuments, DOC_TYPE_LABELS } from "@/lib/documentTypes";
 import type { ApplicationProfileResponse } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 3000;
@@ -73,7 +73,7 @@ export function ProcessingStep({ applicationId, onComplete }: ProcessingStepProp
     }
   }
 
-  const documents = profile?.documents ?? [];
+  const documents = dedupeSingletonDocuments(profile?.documents ?? []);
 
   return (
     <div className="max-w-[640px] mx-auto px-6 pt-14 pb-20">
