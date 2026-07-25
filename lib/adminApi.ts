@@ -2,6 +2,7 @@ import type {
   AdminDecisionCreateInput,
   AdminDecisionResponse,
   AdminLoginInput,
+  DecisionOutcome,
   AdminProfile,
   BulkUploadResult,
   CallForInterviewResponse,
@@ -202,6 +203,13 @@ export function createAdminDecision(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function listAdminDecisions(params: {
+  program_id?: string;
+  decision?: DecisionOutcome;
+}): Promise<AdminDecisionResponse[]> {
+  return adminFetch<AdminDecisionResponse[]>(`/admin-decisions${buildQuery(params)}`);
 }
 
 export function callForInterview(applicationIds: string[]): Promise<CallForInterviewResponse> {

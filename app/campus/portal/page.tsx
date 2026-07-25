@@ -88,8 +88,7 @@ function PortalContent({ applicationId }: { applicationId: string }) {
             </p>
             {data.test_a.submitted ? (
               <div className="text-[13px] font-semibold text-forest">
-                Score recorded: {data.test_a.score != null ? Math.round(data.test_a.score) : "—"}
-                /100
+                Your responses have been recorded.
               </div>
             ) : (
               <Link

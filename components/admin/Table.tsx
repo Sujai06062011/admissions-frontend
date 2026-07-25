@@ -14,12 +14,14 @@ export function Table<T>({
   rowKey,
   emptyMessage = "No records found.",
   onRowClick,
+  rowClassName,
 }: {
   columns: TableColumn<T>[];
   rows: T[];
   rowKey: (row: T) => string;
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
+  rowClassName?: (row: T) => string;
 }) {
   if (rows.length === 0) {
     return (
@@ -54,7 +56,7 @@ export function Table<T>({
                 if ((e.target as HTMLElement).closest("button, a")) return;
                 onRowClick(row);
               }}
-              className={`border-b border-border last:border-0 hover:bg-bg/60 ${onRowClick ? "cursor-pointer" : ""}`}
+              className={`border-b border-border last:border-0 hover:bg-bg/60 ${onRowClick ? "cursor-pointer" : ""} ${rowClassName?.(row) ?? ""}`}
             >
               {columns.map((col) => (
                 <td key={col.key} className={`px-4 py-3 ${col.className ?? ""}`}>

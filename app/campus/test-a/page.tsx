@@ -22,7 +22,7 @@ type ViewState =
   | { kind: "blocked"; expiresAt: string }
   | { kind: "fatal"; message: string }
   | { kind: "active"; cache: TestASessionCache }
-  | { kind: "submitted"; score: number };
+  | { kind: "submitted" };
 
 function formatClock(msRemaining: number): string {
   const totalSeconds = Math.max(0, Math.floor(msRemaining / 1000));
@@ -40,7 +40,7 @@ function TestARunner({
 }: {
   applicationId: string;
   cache: TestASessionCache;
-  onSubmitted: (score: number) => void;
+  onSubmitted: () => void;
 }) {
   const [answers, setAnswers] = useState<Record<string, number>>(cache.answers);
   // null until the first tick below runs — Date.now() is impure and can't be
@@ -57,9 +57,11 @@ function TestARunner({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const result = await submitTestASession(applicationId, answers);
+      // Score isn't surfaced to the candidate — result.score is intentionally
+      // unused here; grading is for admin/screening purposes only.
+      await submitTestASession(applicationId, answers);
       clearTestASessionCache();
-      onSubmitted(result.score);
+      onSubmitted();
     } catch (err) {
       submittedRef.current = false;
       setSubmitting(false);
@@ -247,7 +249,7 @@ function TestAPageContent({ applicationId }: { applicationId: string }) {
         if (!active) return;
 
         if (status.test_a.submitted) {
-          setState({ kind: "submitted", score: status.test_a.score ?? 0 });
+          setState({ kind: "submitted" });
           return;
         }
 
@@ -348,7 +350,8 @@ function TestAPageContent({ applicationId }: { applicationId: string }) {
         </div>
         <h2 className="font-serif text-xl font-semibold mb-2">Written test submitted</h2>
         <p className="text-[13.5px] text-text-muted max-w-[380px] mx-auto mb-6">
-          Your score has been recorded: <strong>{Math.round(state.score)}/100</strong>
+          Your responses have been recorded. Results will be communicated as part of the
+          admissions process.
         </p>
         <button
           type="button"
@@ -365,7 +368,7 @@ function TestAPageContent({ applicationId }: { applicationId: string }) {
     <TestARunner
       applicationId={applicationId}
       cache={state.cache}
-      onSubmitted={(score) => setState({ kind: "submitted", score })}
+      onSubmitted={() => setState({ kind: "submitted" })}
     />
   );
 }

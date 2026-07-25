@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { callForInterview, createAdminDecision, listCandidates, listPreferenceMatchResults } from "@/lib/adminApi";
+import {
+  callForInterview,
+  createAdminDecision,
+  listAdminDecisions,
+  listCandidates,
+  listPreferenceMatchResults,
+} from "@/lib/adminApi";
 import { PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
 import {
   STAGE_BADGE_COLORS,
@@ -37,7 +43,15 @@ function initials(name: string | null): string {
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
 }
 
-function CandidateCell({ candidate, isTopPick }: { candidate: CandidateWithMatch; isTopPick: boolean }) {
+function CandidateCell({
+  candidate,
+  isTopPick,
+  isOverridden = false,
+}: {
+  candidate: CandidateWithMatch;
+  isTopPick: boolean;
+  isOverridden?: boolean;
+}) {
   return (
     <div className="flex items-center gap-2.5">
       <div className="w-8 h-8 rounded-full bg-ink-light/15 text-ink-light flex items-center justify-center text-[11px] font-bold shrink-0">
@@ -53,6 +67,7 @@ function CandidateCell({ candidate, isTopPick }: { candidate: CandidateWithMatch
               Top Pick
             </span>
           )}
+          {isOverridden && <OverriddenBadge />}
         </div>
         <div className="text-[11px] text-text-muted truncate">
           {candidate.application_number ?? candidate.application_id.slice(0, 8).toUpperCase()}
@@ -72,6 +87,23 @@ function StageBadge({ candidate }: { candidate: CandidateWithMatch }) {
   );
 }
 
+/** Small visual cue alongside the stage badge — the row's light-purple
+ * background (see OVERRIDDEN_ROW_CLASS) already signals this, but a text
+ * label keeps it legible for anyone relying on high-contrast/no-color
+ * viewing and reads clearly in a screenshot or printout. */
+function OverriddenBadge() {
+  return (
+    <span
+      title="This candidate failed a hard-cutoff rule and was manually overridden into the pipeline."
+      className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full bg-[#EEE3FB] text-[#7A4FC4]"
+    >
+      Overridden
+    </span>
+  );
+}
+
+const OVERRIDDEN_ROW_CLASS = "bg-[#F7F2FD]";
+
 export default function ApplicationsPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<StageTabKey>("screening");
@@ -81,6 +113,7 @@ export default function ApplicationsPage() {
   const [rejectedExpanded, setRejectedExpanded] = useState(true);
   const [passedExpanded, setPassedExpanded] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const candidatesQuery = useQuery({
     queryKey: ["candidates", PROGRAM_ID],
@@ -98,6 +131,11 @@ export default function ApplicationsPage() {
     queryFn: () => listPreferenceMatchResults({ program_id: PROGRAM_ID, limit: 500 }),
   });
 
+  const overridesQuery = useQuery({
+    queryKey: ["admin-decisions", PROGRAM_ID, "manual_override"],
+    queryFn: () => listAdminDecisions({ program_id: PROGRAM_ID, decision: "manual_override" }),
+  });
+
   const isLoading = candidatesQuery.isLoading || matchResultsQuery.isLoading;
   const isError = candidatesQuery.isError || matchResultsQuery.isError;
 
@@ -106,6 +144,11 @@ export default function ApplicationsPage() {
     return attachMatchResults(candidatesQuery.data, matchResultsQuery.data ?? []);
   }, [candidatesQuery.data, matchResultsQuery.data]);
 
+  const overriddenIds = useMemo(
+    () => new Set((overridesQuery.data ?? []).map((d) => d.application_id)),
+    [overridesQuery.data],
+  );
+
   const filtered = useMemo(() => searchCandidates(allCandidates, search), [allCandidates, search]);
   const counts = useMemo(() => countByStage(allCandidates), [allCandidates]);
 
@@ -113,6 +156,7 @@ export default function ApplicationsPage() {
     queryClient.invalidateQueries({ queryKey: ["candidates", PROGRAM_ID] });
     queryClient.invalidateQueries({ queryKey: ["preference-match-results", PROGRAM_ID] });
     queryClient.invalidateQueries({ queryKey: ["funnel", PROGRAM_ID] });
+    queryClient.invalidateQueries({ queryKey: ["admin-decisions", PROGRAM_ID] });
   }
 
   const moveToCampusMutation = useMutation({
@@ -126,15 +170,17 @@ export default function ApplicationsPage() {
   });
 
   const overrideMutation = useMutation({
-    mutationFn: (applicationId: string) =>
+    mutationFn: ({ applicationId, notes }: { applicationId: string; notes: string }) =>
       createAdminDecision({
         application_id: applicationId,
         stage: "stage2_move_to_campus",
         decision: "manual_override",
+        notes,
       }),
     onSuccess: () => {
       invalidateAll();
       setPendingAction(null);
+      setOverrideReason("");
     },
     onError: (err: Error) => setActionError(err.message),
   });
@@ -207,7 +253,9 @@ export default function ApplicationsPage() {
     {
       key: "candidate",
       header: "Candidate",
-      render: (c) => <CandidateCell candidate={c} isTopPick={c.rank === 1} />,
+      render: (c) => (
+        <CandidateCell candidate={c} isTopPick={c.rank === 1} isOverridden={overriddenIds.has(c.application_id)} />
+      ),
     },
     {
       key: "composite",
@@ -359,7 +407,9 @@ export default function ApplicationsPage() {
     {
       key: "candidate",
       header: "Candidate",
-      render: (c) => <CandidateCell candidate={c} isTopPick={c.rank === 1} />,
+      render: (c) => (
+        <CandidateCell candidate={c} isTopPick={c.rank === 1} isOverridden={overriddenIds.has(c.application_id)} />
+      ),
     },
     {
       key: "composite",
@@ -490,6 +540,7 @@ export default function ApplicationsPage() {
                 rowKey={(c) => c.application_id}
                 emptyMessage="No candidates have passed screening yet."
                 onRowClick={(c) => setDrawerId(c.application_id)}
+                rowClassName={(c) => (overriddenIds.has(c.application_id) ? OVERRIDDEN_ROW_CLASS : "")}
               />
             )}
           </div>
@@ -529,6 +580,7 @@ export default function ApplicationsPage() {
             rowKey={(c) => c.application_id}
             emptyMessage="No candidates at this stage yet."
             onRowClick={(c) => setDrawerId(c.application_id)}
+            rowClassName={(c) => (overriddenIds.has(c.application_id) ? OVERRIDDEN_ROW_CLASS : "")}
           />
         </div>
       )}
@@ -542,15 +594,39 @@ export default function ApplicationsPage() {
           description={pendingCopy.description}
           confirmLabel={pendingCopy.confirmLabel}
           loading={actionLoading}
-          onCancel={() => setPendingAction(null)}
+          confirmDisabled={pendingAction.type === "override" && overrideReason.trim().length === 0}
+          onCancel={() => {
+            setPendingAction(null);
+            setOverrideReason("");
+          }}
           onConfirm={() => {
             const id = pendingAction.candidate.application_id;
             setActionError(null);
             if (pendingAction.type === "move_to_campus") moveToCampusMutation.mutate(id);
-            if (pendingAction.type === "override") overrideMutation.mutate(id);
+            if (pendingAction.type === "override")
+              overrideMutation.mutate({ applicationId: id, notes: overrideReason.trim() });
             if (pendingAction.type === "move_to_final") moveToFinalMutation.mutate(id);
           }}
-        />
+        >
+          {pendingAction.type === "override" && (
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1.5">
+                Reason for override <span className="text-brick">*</span>
+              </label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="e.g. Strong prior work experience offsets a marginal 10th percentage."
+                className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-ink/15 resize-none"
+              />
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Recorded against this candidate for audit purposes.
+              </p>
+            </div>
+          )}
+        </ConfirmDialog>
       )}
     </div>
   );

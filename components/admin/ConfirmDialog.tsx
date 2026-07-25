@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 export function ConfirmDialog({
   open,
   title,
@@ -8,6 +10,8 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "default",
   loading = false,
+  confirmDisabled = false,
+  children,
   onConfirm,
   onCancel,
 }: {
@@ -18,6 +22,10 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: "default" | "danger";
   loading?: boolean;
+  /** Disables the confirm button independently of `loading` — e.g. while a required field (like an override reason) is still empty. */
+  confirmDisabled?: boolean;
+  /** Optional extra content (e.g. a reason field) rendered between the description and the action buttons. */
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -34,6 +42,7 @@ export function ConfirmDialog({
       >
         <h3 className="font-serif text-lg font-bold text-text mb-2">{title}</h3>
         {description && <p className="text-sm text-text-muted mb-5">{description}</p>}
+        {children && <div className="mb-5">{children}</div>}
         <div className="flex justify-end gap-2.5">
           <button
             type="button"
@@ -45,7 +54,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={loading}
+            disabled={loading || confirmDisabled}
             className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition disabled:opacity-60 disabled:cursor-not-allowed ${
               tone === "danger" ? "bg-brick hover:bg-brick/90" : "bg-ink hover:bg-ink-dark"
             }`}
