@@ -28,6 +28,7 @@ export function ApplicationFlow() {
       <div className={step === "form" ? "max-w-[640px] mx-auto px-6 pt-14 pb-20" : "hidden"}>
         <BrandHeader />
         <BasicInfoStep
+          active={step === "form"}
           onComplete={(id, entries) => {
             setApplicationId(id);
             setExperienceEntries(entries);

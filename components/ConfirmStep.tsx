@@ -24,11 +24,7 @@ export interface ConfirmStepProps {
   onBack: () => void;
 }
 
-const NUMERIC_FIELD_KEYS = new Set(["percentage", "cgpa", "year"]);
-/** Only these two numeric fields drive the "you edited an auto-filled value"
- * consent gate — a corrected year or institution spelling isn't the kind of
- * discrepancy that should block submission on its own. */
-const MISMATCH_CHECK_KEYS = new Set(["percentage", "cgpa"]);
+const NUMERIC_FIELD_KEYS = new Set(["cgpa", "year"]);
 const MARKSHEET_DOC_TYPES = new Set(["10th_marksheet", "12th_marksheet", "ug_marksheet", "pg_marksheet"]);
 
 const GENDER_LABELS: Record<string, string> = {
@@ -41,6 +37,14 @@ const GENDER_LABELS: Record<string, string> = {
 function toFieldValue(key: string, value: string): string | number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
+  // Percentage can hold either a number ("78.4") or, for a degree
+  // certificate with no marks table, a result classification like "First
+  // Class" — keep the number if it parses as one, otherwise keep the text
+  // as-is rather than dropping it to null.
+  if (key === "percentage") {
+    const num = Number(trimmed);
+    return Number.isFinite(num) ? num : trimmed;
+  }
   if (NUMERIC_FIELD_KEYS.has(key)) {
     const num = Number(trimmed);
     return Number.isFinite(num) ? num : null;
@@ -319,7 +323,6 @@ export function ConfirmStep({
       const sectionTitle = REVIEW_SECTION_TITLES[doc.doc_type] ?? doc.doc_type;
 
       for (const { key, label } of schema) {
-        if (!MISMATCH_CHECK_KEYS.has(key)) continue;
         const originalValue = (original[key] ?? "").trim();
         const editedValue = (edited[key] ?? "").trim();
         if (originalValue && editedValue && originalValue !== editedValue) {

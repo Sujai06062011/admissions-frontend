@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Stepper } from "./Stepper";
 import { DocumentUploadCard, type DocSlotStatus } from "./DocumentUploadCard";
 import {
@@ -50,10 +50,14 @@ function todayIsoDate() {
 }
 
 export interface BasicInfoStepProps {
+  /** Whether this step is the one currently shown — it stays mounted (just
+   * hidden) while other steps are active, so its own state survives the
+   * candidate going back to fix a document. */
+  active: boolean;
   onComplete: (applicationId: string, experienceEntries: ExperienceEntry[]) => void;
 }
 
-export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
+export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -77,6 +81,16 @@ export function BasicInfoStep({ onComplete }: BasicInfoStepProps) {
   const [consentProcessing, setConsentProcessing] = useState(false);
   const [attemptedContinue, setAttemptedContinue] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // `submitting` disables Continue only for the moment it takes onComplete to
+  // switch steps — but since this component now stays mounted (hidden)
+  // rather than unmounting, that flag would otherwise stay stuck true
+  // forever once the candidate comes back here via the Review screen's Back
+  // button, leaving Continue permanently disabled even with everything
+  // filled in correctly.
+  useEffect(() => {
+    if (active) setSubmitting(false);
+  }, [active]);
 
   const isLocked = applicationId !== null;
 

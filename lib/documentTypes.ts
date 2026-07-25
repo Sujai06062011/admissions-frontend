@@ -44,9 +44,22 @@ export interface ReviewFieldSchemaEntry {
   label: string;
 }
 
-const MARKSHEET_FIELDS: ReviewFieldSchemaEntry[] = [
+// 10th/12th have a school name that's genuinely distinct from the
+// affiliating board (CBSE vs. "XYZ Public School"), so both are worth
+// showing. UG/PG degree certificates usually only name one institution — the
+// awarding university — so a separate "college name" field is redundant
+// with Board / University and was dropped there.
+const SCHOOL_MARKSHEET_FIELDS: ReviewFieldSchemaEntry[] = [
   { key: "name_on_certificate", label: "Name on Certificate" },
   { key: "institution_name", label: "School / College Name" },
+  { key: "board_or_university", label: "Board / University" },
+  { key: "percentage", label: "Percentage" },
+  { key: "cgpa", label: "CGPA" },
+  { key: "year", label: "Year" },
+];
+
+const DEGREE_MARKSHEET_FIELDS: ReviewFieldSchemaEntry[] = [
+  { key: "name_on_certificate", label: "Name on Certificate" },
   { key: "board_or_university", label: "Board / University" },
   { key: "percentage", label: "Percentage" },
   { key: "cgpa", label: "CGPA" },
@@ -69,10 +82,10 @@ const ID_FIELDS: ReviewFieldSchemaEntry[] = [
 export const REVIEW_FIELD_SCHEMAS: Partial<Record<DocType, ReviewFieldSchemaEntry[]>> = {
   address_proof: ADDRESS_FIELDS,
   id_proof: ID_FIELDS,
-  "10th_marksheet": MARKSHEET_FIELDS,
-  "12th_marksheet": MARKSHEET_FIELDS,
-  ug_marksheet: MARKSHEET_FIELDS,
-  pg_marksheet: MARKSHEET_FIELDS,
+  "10th_marksheet": SCHOOL_MARKSHEET_FIELDS,
+  "12th_marksheet": SCHOOL_MARKSHEET_FIELDS,
+  ug_marksheet: DEGREE_MARKSHEET_FIELDS,
+  pg_marksheet: DEGREE_MARKSHEET_FIELDS,
 };
 
 // Fixed display order for the Review screen, independent of upload order.
