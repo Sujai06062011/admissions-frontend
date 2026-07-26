@@ -415,7 +415,26 @@ export default function QuestionBankPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      // The single most common upload failure is every row
+                      // getting skipped with "missing category" — happens
+                      // whenever the file has no category column of its own
+                      // AND this dropdown was left on "All categories". Catch
+                      // it here, before the file picker even opens, instead
+                      // of letting the admin discover it via a wall of
+                      // per-row errors after the fact.
+                      if (
+                        !categoryFilter &&
+                        !window.confirm(
+                          'No category is selected above (currently "All categories"). ' +
+                            "If your file doesn't have its own \"category\" column, every row will be skipped.\n\n" +
+                            "Click Cancel to go back and pick a category first, or OK to continue anyway (e.g. your file already has a category column).",
+                        )
+                      ) {
+                        return;
+                      }
+                      fileInputRef.current?.click();
+                    }}
                     disabled={bulkUploadMutation.isPending}
                     title={
                       categoryFilter
