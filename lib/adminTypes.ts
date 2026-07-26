@@ -189,13 +189,17 @@ export interface QuestionBankResponse {
   name: string;
 }
 
+export type QuestionAnswerType = "single" | "multi";
+
 export interface QuestionResponse {
   id: string;
   bank_id: string;
   category: QuestionCategory;
   question_text: string;
   options: string[] | null;
+  answer_type: QuestionAnswerType;
   correct_answer: string | null;
+  correct_answers: string[] | null;
   difficulty: string;
   created_at: string | null;
 }
@@ -204,7 +208,9 @@ export interface QuestionCreateInput {
   category: QuestionCategory;
   question_text: string;
   options?: string[] | null;
+  answer_type?: QuestionAnswerType;
   correct_answer?: string | null;
+  correct_answers?: string[] | null;
   difficulty?: string;
 }
 

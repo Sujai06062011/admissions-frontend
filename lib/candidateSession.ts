@@ -54,9 +54,17 @@ const TEST_A_CACHE_KEY = "campus_test_a_v1";
 
 export interface TestASessionCache {
   applicationId: string;
-  questions: { question_id: string; question_text: string; options: string[] }[];
+  questions: {
+    question_id: string;
+    question_text: string;
+    options: string[];
+    answer_type: "single" | "multi";
+  }[];
   expiresAt: string;
-  answers: Record<string, number>;
+  // Selected option index(es) per question_id — always an array, even for a
+  // single-select question (one-element array), so it lines up 1:1 with what
+  // the backend now expects (see TestASessionSubmitRequest).
+  answers: Record<string, number[]>;
 }
 
 export function loadTestASessionCache(applicationId: string): TestASessionCache | null {

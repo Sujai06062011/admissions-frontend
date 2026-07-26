@@ -57,7 +57,7 @@ export async function startTestASession(applicationId: string): Promise<TestASes
 
 export async function submitTestASession(
   applicationId: string,
-  answers: Record<string, number>,
+  answers: Record<string, number[]>,
 ): Promise<TestASubmitResult> {
   const response = await fetch(`${API_URL}/applications/${applicationId}/test-a-session/submit`, {
     method: "POST",

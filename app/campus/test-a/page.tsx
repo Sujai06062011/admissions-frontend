@@ -42,7 +42,7 @@ function TestARunner({
   cache: TestASessionCache;
   onSubmitted: () => void;
 }) {
-  const [answers, setAnswers] = useState<Record<string, number>>(cache.answers);
+  const [answers, setAnswers] = useState<Record<string, number[]>>(cache.answers);
   // null until the first tick below runs — Date.now() is impure and can't be
   // called during render (including in a useState lazy initializer).
   const [msRemaining, setMsRemaining] = useState<number | null>(null);
@@ -101,15 +101,27 @@ function TestARunner({
     };
   }, [cache.expiresAt, doSubmit]);
 
-  function selectAnswer(questionId: string, optionIndex: number) {
+  function selectSingleAnswer(questionId: string, optionIndex: number) {
     setAnswers((prev) => {
-      const next = { ...prev, [questionId]: optionIndex };
+      const next = { ...prev, [questionId]: [optionIndex] };
       saveTestASessionCache({ ...cache, answers: next });
       return next;
     });
   }
 
-  const answeredCount = Object.keys(answers).length;
+  function toggleMultiAnswer(questionId: string, optionIndex: number) {
+    setAnswers((prev) => {
+      const current = prev[questionId] ?? [];
+      const nextForQuestion = current.includes(optionIndex)
+        ? current.filter((i) => i !== optionIndex)
+        : [...current, optionIndex];
+      const next = { ...prev, [questionId]: nextForQuestion };
+      saveTestASessionCache({ ...cache, answers: next });
+      return next;
+    });
+  }
+
+  const answeredCount = Object.values(answers).filter((a) => a.length > 0).length;
   const totalCount = cache.questions.length;
   const isLow = msRemaining != null && msRemaining < 2 * 60 * 1000;
 
@@ -145,15 +157,23 @@ function TestARunner({
             key={question.question_id}
             className="bg-surface border border-border rounded-[14px] px-[24px] py-[20px]"
           >
-            <div className="text-[13px] font-semibold text-text-muted mb-1.5">
-              Question {index + 1} of {totalCount}
+            <div className="flex items-center justify-between gap-3 mb-1.5">
+              <div className="text-[13px] font-semibold text-text-muted">
+                Question {index + 1} of {totalCount}
+              </div>
+              {question.answer_type === "multi" && (
+                <span className="text-[10.5px] font-semibold uppercase tracking-wide bg-gold-soft text-gold rounded-full px-2 py-0.5 shrink-0">
+                  Select all that apply
+                </span>
+              )}
             </div>
             <div className="text-[15px] font-medium mb-4 leading-relaxed">
               {question.question_text}
             </div>
             <div className="flex flex-col gap-2">
               {question.options.map((option, optionIndex) => {
-                const selected = answers[question.question_id] === optionIndex;
+                const selected = (answers[question.question_id] ?? []).includes(optionIndex);
+                const isMulti = question.answer_type === "multi";
                 return (
                   <label
                     key={optionIndex}
@@ -164,10 +184,14 @@ function TestARunner({
                     }`}
                   >
                     <input
-                      type="radio"
-                      name={question.question_id}
+                      type={isMulti ? "checkbox" : "radio"}
+                      name={isMulti ? undefined : question.question_id}
                       checked={selected}
-                      onChange={() => selectAnswer(question.question_id, optionIndex)}
+                      onChange={() =>
+                        isMulti
+                          ? toggleMultiAnswer(question.question_id, optionIndex)
+                          : selectSingleAnswer(question.question_id, optionIndex)
+                      }
                       className="shrink-0"
                     />
                     <span className="text-text-muted font-semibold">

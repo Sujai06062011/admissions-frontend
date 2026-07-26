@@ -20,6 +20,7 @@ import {
 import { PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
 import type {
   BulkUploadResult,
+  QuestionAnswerType,
   QuestionBankResponse,
   QuestionCategory,
   QuestionResponse,
@@ -47,8 +48,18 @@ interface QuestionFormState {
   category: QuestionCategory;
   question_text: string;
   optionsText: string;
+  answer_type: QuestionAnswerType;
+  // Free text for either case: a single letter/option text for "single", or
+  // several comma-separated letters/option texts ("A, C") for "multi" — same
+  // convention the bulk CSV/XLSX importer uses, so admins can move between
+  // the two without relearning a format.
   correct_answer: string;
   difficulty: string;
+}
+
+function correctAnswersText(q: QuestionResponse): string {
+  if (q.answer_type === "multi") return (q.correct_answers ?? []).join(", ") || "—";
+  return q.correct_answer || "—";
 }
 
 interface BlueprintFormState {
@@ -131,11 +142,18 @@ export default function QuestionBankPage() {
         .split("\n")
         .map((o) => o.trim())
         .filter(Boolean);
+      const isMulti = input.answer_type === "multi";
+      const tokens = input.correct_answer
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
       const payload = {
         category: input.category,
         question_text: input.question_text,
         options: options.length > 0 ? options : null,
-        correct_answer: input.correct_answer || null,
+        answer_type: input.answer_type,
+        correct_answer: !isMulti ? tokens[0] || null : null,
+        correct_answers: isMulti ? (tokens.length > 0 ? tokens : null) : null,
         difficulty: input.difficulty || "medium",
       };
       return input.id ? updateQuestion(input.id, payload) : createQuestion(selectedBankId as string, payload);
@@ -203,7 +221,20 @@ export default function QuestionBankPage() {
       render: (q) => <span className="truncate block">{q.question_text}</span>,
     },
     { key: "options", header: "Options", render: (q) => (q.options?.length ? q.options.length : "—") },
-    { key: "answer", header: "Correct Answer", render: (q) => q.correct_answer || "—" },
+    {
+      key: "answer",
+      header: "Correct Answer",
+      render: (q) => (
+        <div className="flex items-center gap-1.5">
+          <span>{correctAnswersText(q)}</span>
+          {q.answer_type === "multi" && (
+            <span className="text-[9.5px] font-bold uppercase tracking-wide bg-gold-soft text-gold rounded-full px-1.5 py-0.5 shrink-0">
+              Multi
+            </span>
+          )}
+        </div>
+      ),
+    },
     {
       key: "difficulty",
       header: "Difficulty",
@@ -224,7 +255,11 @@ export default function QuestionBankPage() {
                 category: q.category,
                 question_text: q.question_text,
                 optionsText: (q.options ?? []).join("\n"),
-                correct_answer: q.correct_answer ?? "",
+                answer_type: q.answer_type ?? "single",
+                correct_answer:
+                  q.answer_type === "multi"
+                    ? (q.correct_answers ?? []).join(", ")
+                    : q.correct_answer ?? "",
                 difficulty: q.difficulty ?? "medium",
               })
             }
@@ -399,6 +434,7 @@ export default function QuestionBankPage() {
                         category: "quant",
                         question_text: "",
                         optionsText: "",
+                        answer_type: "single",
                         correct_answer: "",
                         difficulty: "medium",
                       })
@@ -565,13 +601,20 @@ export default function QuestionBankPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1.5">Correct Answer</label>
-                  <input
-                    type="text"
-                    value={questionForm.correct_answer}
-                    onChange={(e) => setQuestionForm({ ...questionForm, correct_answer: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-ink/15"
-                  />
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1.5">Answer Type</label>
+                  <select
+                    value={questionForm.answer_type}
+                    onChange={(e) =>
+                      setQuestionForm({
+                        ...questionForm,
+                        answer_type: e.target.value as QuestionAnswerType,
+                      })
+                    }
+                    className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface"
+                  >
+                    <option value="single">Single correct answer</option>
+                    <option value="multi">Multiple correct answers</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1.5">Difficulty</label>
@@ -585,6 +628,26 @@ export default function QuestionBankPage() {
                     <option value="hard">Hard</option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1.5">
+                  Correct Answer{questionForm.answer_type === "multi" ? "s" : ""}
+                </label>
+                <input
+                  type="text"
+                  value={questionForm.correct_answer}
+                  onChange={(e) => setQuestionForm({ ...questionForm, correct_answer: e.target.value })}
+                  placeholder={
+                    questionForm.answer_type === "multi"
+                      ? "e.g. A, C — separate each correct option with a comma"
+                      : "e.g. C, or the exact option text"
+                  }
+                  className="w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-ink/15"
+                />
+                <p className="text-[11px] text-text-muted mt-1.5">
+                  A letter label (A, B, C…) matching the option order above, or the exact option
+                  text.
+                </p>
               </div>
               <div className="flex justify-end gap-2.5">
                 <button type="button" onClick={() => setQuestionForm(null)} className="px-4 py-2 rounded-lg text-sm font-semibold border border-border text-text hover:bg-bg transition">

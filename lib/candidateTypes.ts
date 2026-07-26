@@ -24,10 +24,13 @@ export interface CandidateStatus {
   test_b: CandidateTestBStatus;
 }
 
+export type TestAAnswerType = "single" | "multi";
+
 export interface TestAQuestion {
   question_id: string;
   question_text: string;
   options: string[];
+  answer_type: TestAAnswerType;
 }
 
 export interface TestASessionStart {
