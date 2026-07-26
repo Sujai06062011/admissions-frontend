@@ -45,10 +45,22 @@ export interface CandidateWithMatch extends CandidateListItem {
  * Interview). This further splits that one status using Test A/B score
  * presence as a proxy for "which of the two campus activities is this
  * candidate currently at" — a heuristic, not a stored fact.
+ *
+ * isOverridden marks a candidate an admin has manually cleared past a
+ * hard-cutoff rejection (a "manual_override" AdminDecision). That decision
+ * deliberately does NOT touch application.status on the backend (see
+ * _apply_status_transition in app/preferences/router.py) — it's a two-step
+ * flow: override only clears them into the normal Passed Screening pool,
+ * and a separate "Move to Campus Test" click is what actually advances
+ * status. match_result.hard_pass is an objective computed fact the override
+ * doesn't change, so without this flag such a candidate would otherwise
+ * keep showing as screening_rejected forever, with no action available to
+ * move them forward.
  */
 export function deriveStage(
   candidate: CandidateListItem,
   hardPass: boolean | null,
+  isOverridden = false,
 ): PipelineStage {
   const { status, test_a_score } = candidate;
 
@@ -57,6 +69,7 @@ export function deriveStage(
   if (status === "moved_to_campus" || status === "testing_complete") {
     return test_a_score == null ? "campus_test" : "campus_interview";
   }
+  if (isOverridden) return "screening_passed";
   if (status === "rejected") {
     return hardPass === false ? "screening_rejected" : "screening_passed";
   }
@@ -67,6 +80,7 @@ export function deriveStage(
 export function attachMatchResults(
   candidates: CandidateListItem[],
   matchResults: PreferenceMatchResultListItem[],
+  overriddenIds: Set<string> = new Set(),
 ): CandidateWithMatch[] {
   const byApplicationId = new Map<string, PreferenceMatchResultListItem>();
   for (const item of matchResults) {
@@ -76,10 +90,11 @@ export function attachMatchResults(
   return candidates.map((candidate) => {
     const match = byApplicationId.get(candidate.application_id);
     const hardPass = match?.match_result?.hard_pass ?? null;
+    const isOverridden = overriddenIds.has(candidate.application_id);
     return {
       ...candidate,
       hard_pass: hardPass,
-      stage: deriveStage(candidate, hardPass),
+      stage: deriveStage(candidate, hardPass, isOverridden),
       application_number: match?.application.application_number ?? null,
       reasons: match?.match_result?.reasons ?? [],
     };

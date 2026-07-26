@@ -139,15 +139,20 @@ export default function ApplicationsPage() {
   const isLoading = candidatesQuery.isLoading || matchResultsQuery.isLoading;
   const isError = candidatesQuery.isError || matchResultsQuery.isError;
 
-  const allCandidates = useMemo(() => {
-    if (!candidatesQuery.data) return [];
-    return attachMatchResults(candidatesQuery.data, matchResultsQuery.data ?? []);
-  }, [candidatesQuery.data, matchResultsQuery.data]);
-
   const overriddenIds = useMemo(
     () => new Set((overridesQuery.data ?? []).map((d) => d.application_id)),
     [overridesQuery.data],
   );
+
+  // overriddenIds feeds into stage derivation itself (an overridden
+  // candidate displays as "screening_passed" so they get the same "Move to
+  // Campus Test" action as anyone else, per app/preferences/router.py's
+  // two-step override flow — see the isOverridden param on deriveStage) —
+  // not just the badge/highlight below.
+  const allCandidates = useMemo(() => {
+    if (!candidatesQuery.data) return [];
+    return attachMatchResults(candidatesQuery.data, matchResultsQuery.data ?? [], overriddenIds);
+  }, [candidatesQuery.data, matchResultsQuery.data, overriddenIds]);
 
   const filtered = useMemo(() => searchCandidates(allCandidates, search), [allCandidates, search]);
   const counts = useMemo(() => countByStage(allCandidates), [allCandidates]);
