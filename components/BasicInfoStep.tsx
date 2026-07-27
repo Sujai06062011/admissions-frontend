@@ -376,7 +376,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
 
         <div className="mb-4">
           <label className="block text-[12.5px] font-semibold mb-1.5">
-            Full Name
+            Full Name <span className="text-brick text-[10px] align-top">*</span>
           </label>
           <input
             type="text"
@@ -395,7 +395,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
 
         <div className="mb-4">
           <label className="block text-[12.5px] font-semibold mb-1.5">
-            Mobile Number
+            Mobile Number <span className="text-brick text-[10px] align-top">*</span>
           </label>
           <input
             type="tel"
@@ -414,7 +414,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
 
         <div>
           <label className="block text-[12.5px] font-semibold mb-1.5">
-            Email Address
+            Email Address <span className="text-brick text-[10px] align-top">*</span>
           </label>
           <input
             type="email"
@@ -433,7 +433,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
 
         <div className="mt-4">
           <label className="block text-[12.5px] font-semibold mb-1.5">
-            Date of Birth
+            Date of Birth <span className="text-brick text-[10px] align-top">*</span>
           </label>
           <input
             type="date"
@@ -452,7 +452,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
 
         <div className="mt-4">
           <label className="block text-[12.5px] font-semibold mb-1.5">
-            Gender
+            Gender <span className="text-brick text-[10px] align-top">*</span>
           </label>
           <select
             value={gender}
@@ -498,6 +498,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
                 key={config.docType}
                 label={config.label}
                 helperText={config.required ? "Required" : "Optional"}
+                required={config.required}
                 status={slot.status}
                 fileName={slot.fileName}
                 errorMessage={slot.errorMessage}

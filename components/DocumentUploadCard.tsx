@@ -7,6 +7,7 @@ export type DocSlotStatus = "idle" | "uploading" | "uploaded" | "error";
 export interface DocSlotViewProps {
   label: string;
   helperText: string;
+  required?: boolean;
   status: DocSlotStatus;
   fileName?: string;
   errorMessage?: string;
@@ -19,6 +20,7 @@ const ACCEPTED_TYPES = ".pdf,.jpg,.jpeg,.png";
 export function DocumentUploadCard({
   label,
   helperText,
+  required,
   status,
   fileName,
   errorMessage,
@@ -80,7 +82,12 @@ export function DocumentUploadCard({
           {isUploaded ? "✓" : isError ? "!" : "📄"}
         </div>
         <div className="min-w-0">
-          <div className="text-[13.5px] font-semibold truncate">{label}</div>
+          <div className="text-[13.5px] font-semibold truncate">
+            {label}
+            {required && (
+              <span className="text-brick text-[10px] align-top">&nbsp;*</span>
+            )}
+          </div>
           <div className={`text-[11px] mt-px truncate ${helperClasses}`}>{helper}</div>
         </div>
       </div>
