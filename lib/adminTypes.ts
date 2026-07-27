@@ -36,6 +36,7 @@ export interface CandidateListItem {
   preference_match_score: number | null;
   test_a_score: number | null;
   test_b_score: number | null;
+  proctoring_flagged: boolean | null;
 }
 
 export type CandidateSortBy = "preference_match_score" | "test_a_score" | "test_b_score";
@@ -65,6 +66,21 @@ export interface TestASessionResponse {
   submitted_at: string | null;
 }
 
+export type TabSwitchEventType = "hidden" | "visible" | "blur" | "focus";
+
+export interface TabSwitchEvent {
+  type: TabSwitchEventType;
+  at: string;
+  away_ms: number | null;
+}
+
+export interface ProctoringReview {
+  flagged: boolean;
+  faces_per_snapshot: number[];
+  notes: string | null;
+  reviewed_at: string | null;
+}
+
 export interface TestBSessionResponse {
   application_id: string;
   prompt_id: string;
@@ -73,6 +89,9 @@ export interface TestBSessionResponse {
   rubric_score: RubricScore | null;
   rationale: string | null;
   recorded_at: string | null;
+  snapshot_urls: string[] | null;
+  tab_switch_events: TabSwitchEvent[] | null;
+  proctoring_review: ProctoringReview | null;
 }
 
 export type CheckInStatus = "not_checked_in" | "checked_in";

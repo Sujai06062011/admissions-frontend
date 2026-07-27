@@ -63,7 +63,7 @@ const BRAND_STATS = [
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("admin@demo-college.test");
+  const [email, setEmail] = useState("admin@democollege");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);

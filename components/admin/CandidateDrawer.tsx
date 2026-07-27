@@ -1,8 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getCandidate, getDocumentSignedUrl, getRecordingSignedUrl } from "@/lib/adminApi";
-import type { RubricScore } from "@/lib/adminTypes";
+import {
+  getCandidate,
+  getDocumentSignedUrl,
+  getRecordingSignedUrl,
+  getProctoringSnapshotSignedUrl,
+} from "@/lib/adminApi";
+import type { RubricScore, TabSwitchEvent } from "@/lib/adminTypes";
 import { CloseIcon } from "./icons";
 
 function formatDate(value: string | null): string {
@@ -23,6 +29,83 @@ function normalizedTestBScore(rubricScore: RubricScore): number | null {
 
 function labelize(value: string): string {
   return value.replace(/_/g, " ");
+}
+
+function summarizeTabSwitches(events: TabSwitchEvent[]): string {
+  const switchCount = events.filter((e) => e.type === "hidden" || e.type === "blur").length;
+  if (switchCount === 0) return "No tab-switching or window-focus loss detected.";
+  const totalAwayMs = events.reduce((sum, e) => sum + (e.away_ms ?? 0), 0);
+  const totalAwaySeconds = Math.round(totalAwayMs / 1000);
+  return `${switchCount} tab-switch${switchCount === 1 ? "" : "es"} detected (~${totalAwaySeconds}s away total).`;
+}
+
+/** Lazily resolves signed URLs for a handful of private snapshot objects and
+ * renders them as clickable thumbnails — fetched client-side rather than
+ * server-side because signed URLs are short-lived and this drawer is opened
+ * on demand, not pre-rendered. */
+function SnapshotGallery({ applicationId, paths }: { applicationId: string; paths: string[] }) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    // Deferred into a microtask (rather than calling setState synchronously
+    // in the effect body) to satisfy react-hooks/set-state-in-effect —
+    // matches the pattern already used in CampusSessionProvider.
+    Promise.resolve().then(() => {
+      if (!cancelled) setUrls({});
+    });
+    Promise.all(
+      paths.map(async (path) => {
+        try {
+          const { url } = await getProctoringSnapshotSignedUrl(applicationId, path);
+          return [path, url] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const result of results) {
+        if (result) next[result[0]] = result[1];
+      }
+      setUrls(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applicationId, paths.join(",")]);
+
+  return (
+    <div className="grid grid-cols-3 gap-2 pt-1.5 border-t border-border">
+      {paths.map((path) => (
+        <a
+          key={path}
+          href={urls[path] ?? undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            if (!urls[path]) e.preventDefault();
+          }}
+          className="block aspect-video rounded-md overflow-hidden bg-border/40 cursor-pointer"
+        >
+          {urls[path] ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={urls[path]}
+              alt="Interview snapshot"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[10px] text-text-muted">
+              Loading…
+            </div>
+          )}
+        </a>
+      ))}
+    </div>
+  );
 }
 
 export function CandidateDrawer({
@@ -88,6 +171,11 @@ export function CandidateDrawer({
               <span className="inline-block mt-2 text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-bg text-text-muted">
                 {labelize(data.application.status)}
               </span>
+              {data.test_b_session?.proctoring_review?.flagged && (
+                <span className="inline-block mt-2 ml-1.5 text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-brick/10 text-brick">
+                  Proctoring flagged
+                </span>
+              )}
             </div>
 
             <section>
@@ -246,6 +334,70 @@ export function CandidateDrawer({
                 </div>
               </section>
             )}
+
+            {data.test_b_session &&
+              (data.test_b_session.snapshot_urls?.length ||
+                data.test_b_session.tab_switch_events?.length ||
+                data.test_b_session.proctoring_review) && (
+                <section>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
+                    Proctoring
+                  </h4>
+                  <div className="bg-bg rounded-lg p-3 text-[12.5px] space-y-2.5">
+                    {data.test_b_session.proctoring_review ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-muted">Academic integrity</span>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                            data.test_b_session.proctoring_review.flagged
+                              ? "bg-brick/10 text-brick"
+                              : "bg-forest/10 text-forest"
+                          }`}
+                        >
+                          {data.test_b_session.proctoring_review.flagged
+                            ? "Flagged"
+                            : "No issues found"}
+                        </span>
+                      </div>
+                    ) : (
+                      data.test_b_session.snapshot_urls?.length ? (
+                        <div className="text-text-muted">Snapshot review pending…</div>
+                      ) : null
+                    )}
+
+                    {data.test_b_session.proctoring_review?.notes && (
+                      <p className="text-text-muted italic leading-relaxed">
+                        &ldquo;{data.test_b_session.proctoring_review.notes}&rdquo;
+                      </p>
+                    )}
+
+                    {data.test_b_session.proctoring_review?.faces_per_snapshot &&
+                      data.test_b_session.proctoring_review.faces_per_snapshot.length > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-text-muted">Faces per snapshot</span>
+                          <span className="font-semibold text-text">
+                            {data.test_b_session.proctoring_review.faces_per_snapshot.join(", ")}
+                          </span>
+                        </div>
+                      )}
+
+                    {data.test_b_session.snapshot_urls &&
+                      data.test_b_session.snapshot_urls.length > 0 && (
+                        <SnapshotGallery
+                          applicationId={applicationId}
+                          paths={data.test_b_session.snapshot_urls}
+                        />
+                      )}
+
+                    <div className="pt-1.5 border-t border-border text-text-muted">
+                      {data.test_b_session.tab_switch_events &&
+                      data.test_b_session.tab_switch_events.length > 0
+                        ? summarizeTabSwitches(data.test_b_session.tab_switch_events)
+                        : "No tab-switching or window-focus loss detected."}
+                    </div>
+                  </div>
+                </section>
+              )}
 
             {data.admin_decisions.length > 0 && (
               <section>

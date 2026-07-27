@@ -72,6 +72,21 @@ export interface RubricScore {
   coherence?: number | null;
 }
 
+export type TabSwitchEventType = "hidden" | "visible" | "blur" | "focus";
+
+export interface TabSwitchEvent {
+  type: TabSwitchEventType;
+  at: string;
+  away_ms: number | null;
+}
+
+export interface ProctoringReview {
+  flagged: boolean;
+  faces_per_snapshot: number[];
+  notes: string | null;
+  reviewed_at: string | null;
+}
+
 export interface TestBSessionResult {
   application_id: string;
   prompt_id: string | null;
@@ -80,4 +95,7 @@ export interface TestBSessionResult {
   rubric_score: RubricScore | null;
   rationale: string | null;
   recorded_at: string | null;
+  snapshot_urls?: string[] | null;
+  tab_switch_events?: TabSwitchEvent[] | null;
+  proctoring_review?: ProctoringReview | null;
 }

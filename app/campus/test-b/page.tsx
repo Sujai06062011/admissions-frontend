@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { BrandHeader } from "@/components/BrandHeader";
 import { CampusGuard } from "@/components/campus/CampusGuard";
@@ -12,9 +12,39 @@ import {
   submitTestBRecording,
 } from "@/lib/candidateApi";
 import { loadTestBPromptCache, saveTestBPromptCache } from "@/lib/candidateSession";
-import type { Prompt } from "@/lib/candidateTypes";
+import type { Prompt, TabSwitchEvent } from "@/lib/candidateTypes";
 
 const MAX_RECORDING_SECONDS = 120;
+const SNAPSHOT_COUNT = 3;
+// Snapshots are scheduled one at a time, each a random gap after the last
+// (rather than all 3 pre-computed against the full 120s max up front) so a
+// short answer still gets its captures early instead of losing them to
+// timers that never fire before the candidate stops recording.
+const SNAPSHOT_MIN_GAP_SECONDS = 4;
+const SNAPSHOT_MAX_GAP_SECONDS = 10;
+
+/** Grabs the current frame of a live <video> element as a JPEG blob via an
+ * offscreen canvas — reuses the MediaStream already attached to the video,
+ * so it needs no new camera/mic permission beyond what recording already
+ * requested. */
+function captureVideoFrame(video: HTMLVideoElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    if (!video.videoWidth || !video.videoHeight) {
+      resolve(null);
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      resolve(null);
+      return;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.85);
+  });
+}
 
 function pickSupportedMimeType(): string {
   const candidates = [
@@ -66,10 +96,12 @@ function PromptDisplay({ prompt }: { prompt: Prompt }) {
 function Recorder({
   applicationId,
   promptId,
+  tabEventsRef,
   onSubmitted,
 }: {
   applicationId: string;
   promptId: string;
+  tabEventsRef: RefObject<TabSwitchEvent[]>;
   onSubmitted: () => void;
 }) {
   const [phase, setPhase] = useState<RecorderPhase>("idle");
@@ -78,6 +110,7 @@ function Recorder({
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [proctoringConsent, setProctoringConsent] = useState(false);
 
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const playbackVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -85,13 +118,25 @@ function Recorder({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const snapshotBlobsRef = useRef<Blob[]>([]);
+  const snapshotTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   function stopStream() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
   }
 
-  useEffect(() => stopStream, []);
+  function clearPendingSnapshots() {
+    snapshotTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    snapshotTimeoutsRef.current = [];
+  }
+
+  useEffect(() => {
+    return () => {
+      clearPendingSnapshots();
+      stopStream();
+    };
+  }, []);
 
   async function enableCamera() {
     setCameraError(null);
@@ -117,6 +162,30 @@ function Recorder({
     }
   }
 
+  function scheduleSnapshots() {
+    snapshotBlobsRef.current = [];
+    clearPendingSnapshots();
+
+    function scheduleNext(remaining: number) {
+      if (remaining <= 0) return;
+      const gapMs =
+        (SNAPSHOT_MIN_GAP_SECONDS +
+          Math.random() * (SNAPSHOT_MAX_GAP_SECONDS - SNAPSHOT_MIN_GAP_SECONDS)) *
+        1000;
+      const timeoutId = setTimeout(async () => {
+        const video = liveVideoRef.current;
+        if (video) {
+          const blob = await captureVideoFrame(video);
+          if (blob) snapshotBlobsRef.current.push(blob);
+        }
+        scheduleNext(remaining - 1);
+      }, gapMs);
+      snapshotTimeoutsRef.current.push(timeoutId);
+    }
+
+    scheduleNext(SNAPSHOT_COUNT);
+  }
+
   function startRecording() {
     const stream = streamRef.current;
     if (!stream) return;
@@ -138,6 +207,7 @@ function Recorder({
     };
     recorderRef.current = recorder;
     recorder.start();
+    scheduleSnapshots();
     setElapsedSeconds(0);
     setPhase("recording");
     timerRef.current = setInterval(() => {
@@ -156,6 +226,7 @@ function Recorder({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    clearPendingSnapshots();
     recorderRef.current?.stop();
   }
 
@@ -170,7 +241,14 @@ function Recorder({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await submitTestBRecording(applicationId, promptId, recordedBlob, "interview-response.webm");
+      await submitTestBRecording(
+        applicationId,
+        promptId,
+        recordedBlob,
+        "interview-response.webm",
+        snapshotBlobsRef.current,
+        tabEventsRef.current,
+      );
       stopStream();
       onSubmitted();
     } catch (err) {
@@ -184,10 +262,24 @@ function Recorder({
   if (phase === "idle") {
     return (
       <div className="text-center py-8">
+        <label className="flex items-start gap-2.5 max-w-[440px] mx-auto mb-5 text-left cursor-pointer">
+          <input
+            type="checkbox"
+            checked={proctoringConsent}
+            onChange={(e) => setProctoringConsent(e.target.checked)}
+            className="mt-0.5 shrink-0"
+          />
+          <span className="text-[12.5px] text-text-muted leading-relaxed">
+            I consent to periodic photo snapshots being captured from my camera feed and to
+            tab-switching / window-focus being monitored during this interview, for
+            academic-integrity verification purposes only.
+          </span>
+        </label>
         <button
           type="button"
           onClick={enableCamera}
-          className="px-6 py-3 rounded-[10px] bg-ink text-white text-sm font-semibold hover:bg-ink-dark cursor-pointer"
+          disabled={!proctoringConsent}
+          className="px-6 py-3 rounded-[10px] bg-ink text-white text-sm font-semibold hover:bg-ink-dark disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           Enable Camera &amp; Microphone →
         </button>
@@ -289,9 +381,76 @@ type ViewState =
   | { kind: "ready"; prompt: Prompt }
   | { kind: "done" };
 
+/** Tracks tab-switch/window-blur activity for the lifetime of the page (not
+ * just while recording) via a ref rather than state, since these events can
+ * fire many times and we only ever need the accumulated log at submit time —
+ * re-rendering the whole page on every switch would be wasteful. The banner
+ * is the one piece that does need to be visible, so that alone is state. */
+function useTabSwitchTracking() {
+  const tabEventsRef = useRef<TabSwitchEvent[]>([]);
+  const [banner, setBanner] = useState<string | null>(null);
+  const hiddenAtRef = useRef<number | null>(null);
+  const blurredAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      const now = Date.now();
+      if (document.hidden) {
+        hiddenAtRef.current = now;
+        tabEventsRef.current.push({ type: "hidden", at: new Date(now).toISOString(), away_ms: null });
+        setBanner("We noticed you switched away from this tab — this has been logged.");
+      } else {
+        const awayMs = hiddenAtRef.current != null ? now - hiddenAtRef.current : null;
+        hiddenAtRef.current = null;
+        tabEventsRef.current.push({ type: "visible", at: new Date(now).toISOString(), away_ms: awayMs });
+      }
+    }
+
+    function handleBlur() {
+      const now = Date.now();
+      blurredAtRef.current = now;
+      tabEventsRef.current.push({ type: "blur", at: new Date(now).toISOString(), away_ms: null });
+      setBanner("We noticed you switched away from this window — this has been logged.");
+    }
+
+    function handleFocus() {
+      const now = Date.now();
+      const awayMs = blurredAtRef.current != null ? now - blurredAtRef.current : null;
+      blurredAtRef.current = null;
+      tabEventsRef.current.push({ type: "focus", at: new Date(now).toISOString(), away_ms: awayMs });
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!banner) return;
+    const timeoutId = setTimeout(() => setBanner(null), 5000);
+    return () => clearTimeout(timeoutId);
+  }, [banner]);
+
+  return { tabEventsRef, banner };
+}
+
+function TabSwitchBanner({ message }: { message: string }) {
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-[440px] px-4 py-2.5 rounded-[10px] bg-ink text-white text-[12.5px] font-medium shadow-lg text-center">
+      {message}
+    </div>
+  );
+}
+
 function TestBPageContent({ applicationId, programId }: { applicationId: string; programId: string }) {
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ kind: "loading" });
+  const { tabEventsRef, banner } = useTabSwitchTracking();
 
   useEffect(() => {
     let active = true;
@@ -400,8 +559,10 @@ function TestBPageContent({ applicationId, programId }: { applicationId: string;
       <Recorder
         applicationId={applicationId}
         promptId={state.prompt.id}
+        tabEventsRef={tabEventsRef}
         onSubmitted={() => setState({ kind: "done" })}
       />
+      {banner && <TabSwitchBanner message={banner} />}
     </div>
   );
 }

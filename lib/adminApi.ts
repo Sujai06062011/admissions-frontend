@@ -143,6 +143,19 @@ export function getRecordingSignedUrl(
   );
 }
 
+export function getProctoringSnapshotSignedUrl(
+  applicationId: string,
+  path: string,
+  expiresIn = 3600,
+): Promise<SignedUrlResponse> {
+  return adminFetch<SignedUrlResponse>(
+    `/applications/${applicationId}/proctoring-snapshot-signed-url${buildQuery({
+      path,
+      expires_in: expiresIn,
+    })}`,
+  );
+}
+
 // --- Preferences / matching ---
 
 export function listPreferenceConfigs(programId: string): Promise<PreferenceConfigResponse[]> {

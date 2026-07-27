@@ -5,6 +5,7 @@ import type {
   CandidateStatus,
   Prompt,
   PromptBank,
+  TabSwitchEvent,
   TestASessionStart,
   TestASubmitResult,
   TestBSessionResult,
@@ -120,10 +121,16 @@ export async function submitTestBRecording(
   promptId: string,
   file: Blob,
   fileName: string,
+  snapshots: Blob[] = [],
+  tabSwitchEvents: TabSwitchEvent[] = [],
 ): Promise<TestBSessionResult> {
   const formData = new FormData();
   formData.append("prompt_id", promptId);
   formData.append("file", file, fileName);
+  snapshots.forEach((snapshot, index) => {
+    formData.append("snapshots", snapshot, `snapshot-${index}.jpg`);
+  });
+  formData.append("tab_switch_events", JSON.stringify(tabSwitchEvents));
 
   const response = await fetch(`${API_URL}/applications/${applicationId}/test-b-recording`, {
     method: "POST",

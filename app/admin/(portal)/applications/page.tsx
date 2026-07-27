@@ -68,6 +68,7 @@ function CandidateCell({
             </span>
           )}
           {isOverridden && <OverriddenBadge />}
+          {candidate.proctoring_flagged && <ProctoringFlaggedBadge />}
         </div>
         <div className="text-[11px] text-text-muted truncate">
           {candidate.application_number ?? candidate.application_id.slice(0, 8).toUpperCase()}
@@ -102,7 +103,32 @@ function OverriddenBadge() {
   );
 }
 
+/** Flags a Test B interview Claude's vision review found suspicious (e.g. a
+ * second person visible in a snapshot) — surfaced right in the candidate
+ * cell since this is the kind of thing an admin should notice at a glance,
+ * not only after opening the drawer. */
+function ProctoringFlaggedBadge() {
+  return (
+    <span
+      title="The AI interview's proctoring review flagged a possible academic-integrity concern — see the candidate drawer for details."
+      className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full bg-brick/10 text-brick"
+    >
+      ⚠ Flagged
+    </span>
+  );
+}
+
 const OVERRIDDEN_ROW_CLASS = "bg-[#F7F2FD]";
+const PROCTORING_FLAGGED_ROW_CLASS = "bg-brick-soft";
+
+/** Proctoring flags take visual priority over the override highlight when a
+ * candidate happens to be both — an academic-integrity concern is the more
+ * urgent thing for an admin to notice. */
+function rowHighlightClass(candidate: CandidateWithMatch, overriddenIds: Set<string>): string {
+  if (candidate.proctoring_flagged) return PROCTORING_FLAGGED_ROW_CLASS;
+  if (overriddenIds.has(candidate.application_id)) return OVERRIDDEN_ROW_CLASS;
+  return "";
+}
 
 export default function ApplicationsPage() {
   const queryClient = useQueryClient();
@@ -545,7 +571,7 @@ export default function ApplicationsPage() {
                 rowKey={(c) => c.application_id}
                 emptyMessage="No candidates have passed screening yet."
                 onRowClick={(c) => setDrawerId(c.application_id)}
-                rowClassName={(c) => (overriddenIds.has(c.application_id) ? OVERRIDDEN_ROW_CLASS : "")}
+                rowClassName={(c) => rowHighlightClass(c, overriddenIds)}
               />
             )}
           </div>
@@ -571,6 +597,7 @@ export default function ApplicationsPage() {
                 rowKey={(c) => c.application_id}
                 emptyMessage="No candidates rejected at screening."
                 onRowClick={(c) => setDrawerId(c.application_id)}
+                rowClassName={(c) => rowHighlightClass(c, overriddenIds)}
               />
             )}
           </div>
@@ -585,7 +612,7 @@ export default function ApplicationsPage() {
             rowKey={(c) => c.application_id}
             emptyMessage="No candidates at this stage yet."
             onRowClick={(c) => setDrawerId(c.application_id)}
-            rowClassName={(c) => (overriddenIds.has(c.application_id) ? OVERRIDDEN_ROW_CLASS : "")}
+            rowClassName={(c) => rowHighlightClass(c, overriddenIds)}
           />
         </div>
       )}
