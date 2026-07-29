@@ -162,12 +162,13 @@ interface EditedFieldMismatch {
 }
 
 interface NameMismatch {
+  sectionTitle: string;
   enteredName: string;
   extractedName: string;
 }
 
 interface MismatchSummary {
-  nameMismatch: NameMismatch | null;
+  nameMismatches: NameMismatch[];
   editedFields: EditedFieldMismatch[];
 }
 
@@ -351,7 +352,7 @@ export function ConfirmStep({
 
   function computeMismatches(): MismatchSummary {
     const editedFields: EditedFieldMismatch[] = [];
-    let nameMismatch: NameMismatch | null = null;
+    const nameMismatches: NameMismatch[] = [];
 
     const enteredName = applicantEdits.full_name.trim();
 
@@ -369,15 +370,18 @@ export function ConfirmStep({
         }
       }
 
-      if (nameMismatch === null && MARKSHEET_DOC_TYPES.has(doc.doc_type) && enteredName) {
+      // One row per marksheet whose certificate name doesn't match the
+      // applicant's entered full name — so a 10th/12th with different names
+      // both surface on the consent screen, not just the first mismatch.
+      if (MARKSHEET_DOC_TYPES.has(doc.doc_type) && enteredName) {
         const extractedName = (edited.name_on_certificate ?? "").trim();
         if (extractedName && normalizeName(extractedName) !== normalizeName(enteredName)) {
-          nameMismatch = { enteredName, extractedName };
+          nameMismatches.push({ sectionTitle, enteredName, extractedName });
         }
       }
     }
 
-    return { nameMismatch, editedFields };
+    return { nameMismatches, editedFields };
   }
 
   async function performSubmit() {
@@ -417,7 +421,7 @@ export function ConfirmStep({
 
   function handleConfirmClick() {
     const summary = computeMismatches();
-    if (summary.nameMismatch || summary.editedFields.length > 0) {
+    if (summary.nameMismatches.length > 0 || summary.editedFields.length > 0) {
       setMismatches(summary);
       setConsentChecked(false);
       setStage("consent");
@@ -450,24 +454,25 @@ export function ConfirmStep({
           </div>
         )}
 
-        {(mismatches.nameMismatch || mismatches.editedFields.length > 0) && (
+        {(mismatches.nameMismatches.length > 0 || mismatches.editedFields.length > 0) && (
           <div className="bg-surface border border-border rounded-[14px] px-[28px] py-[24px] mb-5">
             <div className="font-serif text-[16.5px] font-semibold mb-1">What&apos;s different</div>
             <div className="text-xs text-text-muted mb-1">
               Everything below was auto-filled from your documents, then changed. Make sure each
               change is correct.
             </div>
-            {mismatches.nameMismatch && (
+            {mismatches.nameMismatches.map((item, index) => (
               <DiffRow
-                title="Full Name"
-                before={mismatches.nameMismatch.extractedName}
-                after={mismatches.nameMismatch.enteredName}
+                key={`name-${index}`}
+                title={`${item.sectionTitle} · Name on certificate`}
+                before={item.extractedName}
+                after={item.enteredName}
                 tone="brick"
               />
-            )}
+            ))}
             {mismatches.editedFields.map((item, index) => (
               <DiffRow
-                key={index}
+                key={`edit-${index}`}
                 title={`${item.sectionTitle} · ${item.label}`}
                 before={item.original}
                 after={item.edited}
