@@ -98,16 +98,23 @@ export function ProcessingStep({ applicationId, onComplete }: ProcessingStepProp
           <div className="mt-8 flex flex-col gap-2.5 max-w-[320px] mx-auto text-left">
             {documents.map((doc) => {
               const done = doc.ocr_result !== null;
+              const failed = Boolean(doc.ocr_result?.error);
               return (
                 <div key={doc.id} className="flex items-center gap-2.5 text-[13px]">
                   <div
-                    className={`w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-white text-[9px] ${done ? "bg-forest" : "bg-border"}`}
+                    className={`w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-white text-[9px] ${
+                      failed ? "bg-brick" : done ? "bg-forest" : "bg-border"
+                    }`}
                   >
-                    {done ? "✓" : ""}
+                    {failed ? "!" : done ? "✓" : ""}
                   </div>
-                  <span className={done ? "" : "text-text-muted"}>
+                  <span className={done && !failed ? "" : "text-text-muted"}>
                     {DOC_TYPE_LABELS[doc.doc_type]}
-                    {done ? " — extracted" : " — processing…"}
+                    {failed
+                      ? " — couldn't read (enter manually)"
+                      : done
+                        ? " — extracted"
+                        : " — processing…"}
                   </span>
                 </div>
               );

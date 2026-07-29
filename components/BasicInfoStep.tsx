@@ -497,7 +497,9 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
               <DocumentUploadCard
                 key={config.docType}
                 label={config.label}
-                helperText={config.required ? "Required" : "Optional"}
+                helperText={
+                  config.required ? "Required · PDF or image" : "Optional · PDF or image"
+                }
                 required={config.required}
                 status={slot.status}
                 fileName={slot.fileName}
@@ -518,7 +520,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
               label={
                 certSlots.length > 1 ? `Certification ${index + 1}` : "Certifications"
               }
-              helperText="Optional · add as many as you like"
+              helperText="Optional · PDF or image · add as many as you like"
               status={slot.status}
               fileName={slot.fileName}
               errorMessage={slot.errorMessage}
@@ -629,7 +631,7 @@ export function BasicInfoStep({ active, onComplete }: BasicInfoStepProps) {
 
                 <DocumentUploadCard
                   label="Certificate"
-                  helperText="Optional"
+                  helperText="Optional · PDF or image"
                   status={entry.fileStatus}
                   fileName={entry.fileName}
                   errorMessage={entry.fileErrorMessage}

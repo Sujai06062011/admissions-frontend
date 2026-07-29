@@ -66,6 +66,10 @@ export interface OcrResult {
   raw_text: string;
   parsed: Record<string, unknown>;
   confidence: number;
+  /** Present when Vision OCR exhausted retries — ProcessingStep treats this
+   * as done so the spinner doesn't hang; Review shows empty fields as
+   * "Enter manually". */
+  error?: string;
 }
 
 export interface UploadedDocument {

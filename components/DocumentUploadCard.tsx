@@ -15,7 +15,15 @@ export interface DocSlotViewProps {
   onRemove?: () => void;
 }
 
-const ACCEPTED_TYPES = ".pdf,.jpg,.jpeg,.png";
+const ACCEPTED_TYPES = ".pdf,.jpg,.jpeg,.png,.webp";
+const ACCEPTED_EXTENSIONS = new Set([".pdf", ".jpg", ".jpeg", ".png", ".webp"]);
+
+function isAcceptedFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return ACCEPTED_EXTENSIONS.has(name.slice(dot));
+}
 
 export function DocumentUploadCard({
   label,
@@ -67,8 +75,13 @@ export function DocumentUploadCard({
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (file) onSelectFile(file);
     event.target.value = "";
+    if (!file) return;
+    // accept= already filters the picker, but some browsers still let through
+    // drag-dropped / typed paths — reject anything outside PDF/image here so
+    // we don't send a file Vision can't OCR.
+    if (!isAcceptedFile(file)) return;
+    onSelectFile(file);
   }
 
   return (
