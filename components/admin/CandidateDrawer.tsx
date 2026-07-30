@@ -203,10 +203,20 @@ export function CandidateDrawer({
                   {data.preference_match.reasons.length > 0 && (
                     <ul className="space-y-1.5 border-t border-border pt-2.5">
                       {data.preference_match.reasons.map((r) => (
-                        <li key={r.field} className="flex items-center justify-between text-[12.5px]">
+                        <li key={r.field} className="flex items-center justify-between text-[12.5px] gap-3">
                           <span className="text-text-muted capitalize">{labelize(r.field)}</span>
-                          <span className={r.passed ? "text-forest font-semibold" : "text-brick font-semibold"}>
+                          <span
+                            className={`font-semibold text-right ${
+                              r.passed ? "text-forest" : "text-brick"
+                            }`}
+                          >
                             {r.actual ?? "—"}
+                            {r.expected != null && (
+                              <span className="text-text-muted font-normal">
+                                {" "}
+                                / min {r.expected}
+                              </span>
+                            )}
                           </span>
                         </li>
                       ))}
