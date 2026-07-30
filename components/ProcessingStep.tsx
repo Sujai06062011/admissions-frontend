@@ -7,7 +7,15 @@ import { dedupeSingletonDocuments, DOC_TYPE_LABELS } from "@/lib/documentTypes";
 import type { ApplicationProfileResponse } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 3000;
-const SLOW_AFTER_MS = 45000;
+/** Show "Continue anyway" once waiting gets slow — don't make applicants guess. */
+const SLOW_AFTER_MS = 20000;
+/**
+ * Hard client-side escape hatch for demo/reliability: if any OCR job is still
+ * null after this (backend hung, Railway killed a background task mid-run,
+ * Claude timeout race, etc.), advance automatically so the spinner never
+ * traps the applicant. Remaining fields show as "Enter manually" on Review.
+ */
+const AUTO_CONTINUE_MS = 75000;
 
 export interface ProcessingStepProps {
   applicationId: string;
@@ -27,6 +35,8 @@ export function ProcessingStep({ applicationId, onComplete }: ProcessingStepProp
 
     async function poll() {
       if (stoppedRef.current) return;
+      const elapsed = Date.now() - (startedAtRef.current ?? Date.now());
+
       try {
         const result = await getApplication(applicationId);
         setProfile(result);
@@ -42,6 +52,14 @@ export function ProcessingStep({ applicationId, onComplete }: ProcessingStepProp
           onComplete(result);
           return;
         }
+
+        // Hard timeout — move on even if one document is still null so a
+        // single hung OCR job can't block the whole application flow.
+        if (elapsed > AUTO_CONTINUE_MS) {
+          stoppedRef.current = true;
+          onComplete(result);
+          return;
+        }
       } catch (err) {
         setError(
           err instanceof ApiError
@@ -50,7 +68,7 @@ export function ProcessingStep({ applicationId, onComplete }: ProcessingStepProp
         );
       }
 
-      if (Date.now() - (startedAtRef.current ?? Date.now()) > SLOW_AFTER_MS) {
+      if (elapsed > SLOW_AFTER_MS) {
         setIsSlow(true);
       }
 
