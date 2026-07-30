@@ -40,16 +40,34 @@ function PortalContent({ applicationId }: { applicationId: string }) {
 
   return (
     <div className="max-w-[640px] mx-auto px-6 pt-14 pb-20">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <BrandHeader />
         <button
           type="button"
           onClick={handleLogout}
-          className="text-[12px] font-semibold text-text-muted hover:text-brick cursor-pointer mt-1"
+          className="text-[12px] font-semibold text-text-muted hover:text-brick cursor-pointer mt-1 shrink-0"
         >
           Sign out
         </button>
       </div>
+
+      {data && (data.applicant_name || data.application_number) && (
+        <div className="mb-6 -mt-4 rounded-[11px] border border-border bg-surface px-4 py-3">
+          {data.applicant_name && (
+            <div className="font-serif text-[16px] font-semibold text-text leading-snug">
+              {data.applicant_name}
+            </div>
+          )}
+          {data.application_number && (
+            <div className="text-[12.5px] text-text-muted mt-0.5">
+              Application No.{" "}
+              <span className="font-semibold text-text tracking-wide">
+                {data.application_number}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       <h1 className="font-serif text-[24px] font-semibold mb-1.5">Your campus assessments</h1>
       <p className="text-[13.5px] text-text-muted mb-8 leading-relaxed">
@@ -119,12 +137,16 @@ function PortalContent({ applicationId }: { applicationId: string }) {
                 Your interview slot hasn&apos;t been assigned yet — check back after your campus
                 schedule is confirmed.
               </div>
+            ) : data.test_b.submitted ? (
+              <div className="text-[13px] font-semibold text-forest">
+                Your recording has been submitted.
+              </div>
             ) : (
               <Link
                 href="/campus/test-b"
                 className="inline-block px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark"
               >
-                {data.test_b.submitted ? "Record Again →" : "Record Response →"}
+                Record Response →
               </Link>
             )}
           </div>

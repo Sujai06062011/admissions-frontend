@@ -60,17 +60,31 @@ function sameIndexSet(a: number[], b: number[]): boolean {
   return b.every((i) => left.has(i));
 }
 
+/** Older/partial submissions sometimes store a bare option index (e.g. `1`)
+ * instead of `[1]`. Normalize so Set()/grading never blow up on View answers. */
+function normalizeIndexList(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value.filter((v): v is number => typeof v === "number");
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return [value];
+  }
+  return [];
+}
+
 function isQuestionCorrect(question: TestAGeneratedQuestion, selected: number[]): boolean {
-  return sameIndexSet(selected, question.correct_indices ?? []);
+  return sameIndexSet(selected, normalizeIndexList(question.correct_indices));
 }
 
 function CampusTestSection({ session }: { session: TestASessionResponse }) {
   const [showAnswers, setShowAnswers] = useState(false);
   const questions = Array.isArray(session.generated_questions) ? session.generated_questions : [];
   const answers = session.answers ?? {};
-  const answered = questions.filter((q) => (answers[q.question_id] ?? []).length > 0).length;
+  const answered = questions.filter(
+    (q) => normalizeIndexList(answers[q.question_id]).length > 0,
+  ).length;
   const correctCount = questions.filter((q) =>
-    isQuestionCorrect(q, answers[q.question_id] ?? []),
+    isQuestionCorrect(q, normalizeIndexList(answers[q.question_id])),
   ).length;
 
   return (
@@ -111,9 +125,9 @@ function CampusTestSection({ session }: { session: TestASessionResponse }) {
             {showAnswers && (
               <ul className="space-y-3 pt-1.5 border-t border-border">
                 {questions.map((question, index) => {
-                  const selected = answers[question.question_id] ?? [];
+                  const selected = normalizeIndexList(answers[question.question_id]);
                   const correct = isQuestionCorrect(question, selected);
-                  const expected = new Set(question.correct_indices ?? []);
+                  const expected = new Set(normalizeIndexList(question.correct_indices));
                   const chosen = new Set(selected);
                   return (
                     <li key={question.question_id} className="space-y-1.5">

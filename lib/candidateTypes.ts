@@ -20,6 +20,8 @@ export interface CandidateStatus {
   program_id: string;
   status: string;
   campus_session_assigned: boolean;
+  applicant_name: string | null;
+  application_number: string | null;
   test_a: CandidateTestAStatus;
   test_b: CandidateTestBStatus;
 }

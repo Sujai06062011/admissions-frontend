@@ -71,7 +71,8 @@ export interface TestAGeneratedQuestion {
 export interface TestASessionResponse {
   application_id: string;
   generated_questions: TestAGeneratedQuestion[];
-  answers: Record<string, number[]> | null;
+  /** Per question_id: selected option indices. May be a bare number in older rows. */
+  answers: Record<string, number[] | number> | null;
   score: number | null;
   started_at: string | null;
   submitted_at: string | null;
