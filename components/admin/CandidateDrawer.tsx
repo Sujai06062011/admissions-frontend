@@ -31,6 +31,82 @@ function labelize(value: string): string {
   return value.replace(/_/g, " ");
 }
 
+interface StoredNameMismatch {
+  section_title: string;
+  extracted_name: string;
+  entered_name: string;
+}
+
+interface StoredEditedField {
+  section_title: string;
+  label: string;
+  original: string;
+  edited: string;
+}
+
+interface StoredDataMismatches {
+  consented_at?: string;
+  name_mismatches: StoredNameMismatch[];
+  edited_fields: StoredEditedField[];
+}
+
+function parseDataMismatches(data: Record<string, unknown> | undefined): StoredDataMismatches | null {
+  const raw = data?.data_mismatches;
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const nameMismatches = Array.isArray(obj.name_mismatches)
+    ? (obj.name_mismatches as StoredNameMismatch[])
+    : [];
+  const editedFields = Array.isArray(obj.edited_fields)
+    ? (obj.edited_fields as StoredEditedField[])
+    : [];
+  if (nameMismatches.length === 0 && editedFields.length === 0) return null;
+  return {
+    consented_at: typeof obj.consented_at === "string" ? obj.consented_at : undefined,
+    name_mismatches: nameMismatches,
+    edited_fields: editedFields,
+  };
+}
+
+function AdminDiffRow({
+  title,
+  before,
+  after,
+  tone,
+}: {
+  title: string;
+  before: string;
+  after: string;
+  tone: "brick" | "gold";
+}) {
+  const afterClasses =
+    tone === "brick"
+      ? "bg-brick-soft border-brick/30 text-brick"
+      : "bg-gold-soft border-gold/30 text-gold";
+  return (
+    <div className="py-3 border-b border-border last:border-b-0">
+      <div className="text-[10.5px] font-semibold text-text-muted uppercase tracking-wide mb-1.5">
+        {title}
+      </div>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-1.5">
+        <div className="min-w-0 rounded-md border border-border bg-[#F5FAFA] px-2.5 py-1.5">
+          <div className="text-[9.5px] font-semibold text-text-muted mb-0.5">On documents</div>
+          <div className="text-[12.5px] font-semibold break-words" title={before}>
+            {before}
+          </div>
+        </div>
+        <div className="flex items-center text-text-muted text-sm">→</div>
+        <div className={`min-w-0 rounded-md border px-2.5 py-1.5 ${afterClasses}`}>
+          <div className="text-[9.5px] font-semibold mb-0.5">Candidate entered</div>
+          <div className="text-[12.5px] font-semibold text-text break-words" title={after}>
+            {after}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function summarizeTabSwitches(events: TabSwitchEvent[]): string {
   const switchCount = events.filter((e) => e.type === "hidden" || e.type === "blur").length;
   if (switchCount === 0) return "No tab-switching or window-focus loss detected.";
@@ -157,7 +233,9 @@ export function CandidateDrawer({
           <div className="p-5 text-sm text-brick">Couldn&apos;t load candidate details.</div>
         )}
 
-        {data && (
+        {data && (() => {
+          const dataMismatches = parseDataMismatches(data.profile_data?.data);
+          return (
           <div className="p-5 space-y-6">
             <div>
               <div className="text-lg font-bold text-text">
@@ -171,12 +249,51 @@ export function CandidateDrawer({
               <span className="inline-block mt-2 text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-bg text-text-muted">
                 {labelize(data.application.status)}
               </span>
+              {dataMismatches && (
+                <span className="inline-block mt-2 ml-1.5 text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-gold-soft text-gold">
+                  Mismatch
+                </span>
+              )}
               {data.test_b_session?.proctoring_review?.flagged && (
                 <span className="inline-block mt-2 ml-1.5 text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full bg-brick/10 text-brick">
                   Proctoring flagged
                 </span>
               )}
             </div>
+
+            {dataMismatches && (
+              <section>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
+                  What&apos;s different
+                </h4>
+                <div className="bg-bg rounded-lg px-3 py-2">
+                  <p className="text-[11.5px] text-text-muted mb-1">
+                    Candidate acknowledged these mismatches vs their documents before submitting.
+                    {dataMismatches.consented_at
+                      ? ` Consented ${formatDate(dataMismatches.consented_at)}.`
+                      : ""}
+                  </p>
+                  {dataMismatches.name_mismatches.map((item, index) => (
+                    <AdminDiffRow
+                      key={`name-${index}`}
+                      title={`${item.section_title} · Name on certificate`}
+                      before={item.extracted_name}
+                      after={item.entered_name}
+                      tone="brick"
+                    />
+                  ))}
+                  {dataMismatches.edited_fields.map((item, index) => (
+                    <AdminDiffRow
+                      key={`edit-${index}`}
+                      title={`${item.section_title} · ${item.label}`}
+                      before={item.original}
+                      after={item.edited}
+                      tone="gold"
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section>
               <h4 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
@@ -431,7 +548,8 @@ export function CandidateDrawer({
               </section>
             )}
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

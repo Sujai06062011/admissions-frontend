@@ -56,6 +56,10 @@ export interface CandidateWithMatch extends CandidateListItem {
  * doesn't change, so without this flag such a candidate would otherwise
  * keep showing as screening_rejected forever, with no action available to
  * move them forward.
+ *
+ * has_data_mismatch (candidate consented after name / auto-fill edits) also
+ * forces screening_rejected until overridden, even when hard_pass is true —
+ * admins must review the mismatch drawer before the candidate can advance.
  */
 export function deriveStage(
   candidate: CandidateListItem,
@@ -70,6 +74,7 @@ export function deriveStage(
     return test_a_score == null ? "campus_test" : "campus_interview";
   }
   if (isOverridden) return "screening_passed";
+  if (candidate.has_data_mismatch) return "screening_rejected";
   if (status === "rejected") {
     return hardPass === false ? "screening_rejected" : "screening_passed";
   }

@@ -123,6 +123,7 @@ function buildProfilePayload(
   reviewed: ReviewedData,
   experienceEntries: ExperienceEntry[],
   basicFields: { dob: string; gender: string },
+  mismatches: MismatchSummary | null = null,
 ): Record<string, unknown> {
   const documentsPayload: Record<string, unknown> = {};
   for (const doc of documents) {
@@ -144,14 +145,43 @@ function buildProfilePayload(
     document_id: entry.documentId ?? null,
   }));
 
-  return {
-    ...profile.profile_data?.data,
+  // Drop any prior data_mismatches so a clean re-submit doesn't keep a stale flag.
+  const { data_mismatches: _unused, ...priorData } = (profile.profile_data?.data ??
+    {}) as Record<string, unknown>;
+  void _unused;
+
+  const payload: Record<string, unknown> = {
+    ...priorData,
     dob: basicFields.dob || null,
     gender: basicFields.gender || null,
     documents: documentsPayload,
     experience,
     ...computeFlatMatchFields(documents, reviewed, experienceEntries),
   };
+
+  // Persisted for the admin Applications drawer / Rejected Screening routing —
+  // without this the consent screen is candidate-only and admins never see it.
+  if (
+    mismatches &&
+    (mismatches.nameMismatches.length > 0 || mismatches.editedFields.length > 0)
+  ) {
+    payload.data_mismatches = {
+      consented_at: new Date().toISOString(),
+      name_mismatches: mismatches.nameMismatches.map((item) => ({
+        section_title: item.sectionTitle,
+        extracted_name: item.extractedName,
+        entered_name: item.enteredName,
+      })),
+      edited_fields: mismatches.editedFields.map((item) => ({
+        section_title: item.sectionTitle,
+        label: item.label,
+        original: item.original,
+        edited: item.edited,
+      })),
+    };
+  }
+
+  return payload;
 }
 
 interface EditedFieldMismatch {
@@ -384,7 +414,7 @@ export function ConfirmStep({
     return { nameMismatches, editedFields };
   }
 
-  async function performSubmit() {
+  async function performSubmit(consentMismatches: MismatchSummary | null = null) {
     setSubmitting(true);
     setError(null);
     try {
@@ -402,7 +432,14 @@ export function ConfirmStep({
 
       await updateApplicationProfile(
         profile.application.id,
-        buildProfilePayload(profile, documents, reviewed, experienceEntries, basicEdits),
+        buildProfilePayload(
+          profile,
+          documents,
+          reviewed,
+          experienceEntries,
+          basicEdits,
+          consentMismatches,
+        ),
       );
 
       onSubmitted({
@@ -427,7 +464,7 @@ export function ConfirmStep({
       setStage("consent");
       return;
     }
-    performSubmit();
+    performSubmit(null);
   }
 
   if (stage === "consent" && mismatches) {
@@ -509,7 +546,7 @@ export function ConfirmStep({
           </button>
           <button
             type="button"
-            onClick={performSubmit}
+            onClick={() => performSubmit(mismatches)}
             disabled={!consentChecked || submitting}
             className="px-[26px] py-3 rounded-[10px] bg-ink text-white text-sm font-semibold hover:bg-ink-dark disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >

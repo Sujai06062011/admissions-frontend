@@ -58,7 +58,7 @@ function CandidateCell({
         {initials(candidate.applicant_name)}
       </div>
       <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[13px] font-semibold text-text truncate">
             {candidate.applicant_name || "Unnamed applicant"}
           </span>
@@ -68,6 +68,7 @@ function CandidateCell({
             </span>
           )}
           {isOverridden && <OverriddenBadge />}
+          {candidate.has_data_mismatch && <MismatchBadge />}
           {candidate.proctoring_flagged && <ProctoringFlaggedBadge />}
         </div>
         <div className="text-[11px] text-text-muted truncate">
@@ -118,15 +119,26 @@ function ProctoringFlaggedBadge() {
   );
 }
 
+function MismatchBadge() {
+  return (
+    <span
+      title="Candidate submitted with name or field mismatches vs their documents — review the drawer before overriding."
+      className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full bg-gold-soft text-gold"
+    >
+      Mismatch
+    </span>
+  );
+}
+
 const OVERRIDDEN_ROW_CLASS = "bg-[#F7F2FD]";
 const PROCTORING_FLAGGED_ROW_CLASS = "bg-brick-soft";
+const MISMATCH_ROW_CLASS = "bg-[#FFF8E8]";
 
-/** Proctoring flags take visual priority over the override highlight when a
- * candidate happens to be both — an academic-integrity concern is the more
- * urgent thing for an admin to notice. */
+/** Priority: proctoring integrity > active mismatch hold > override highlight. */
 function rowHighlightClass(candidate: CandidateWithMatch, overriddenIds: Set<string>): string {
   if (candidate.proctoring_flagged) return PROCTORING_FLAGGED_ROW_CLASS;
   if (overriddenIds.has(candidate.application_id)) return OVERRIDDEN_ROW_CLASS;
+  if (candidate.has_data_mismatch) return MISMATCH_ROW_CLASS;
   return "";
 }
 

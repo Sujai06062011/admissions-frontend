@@ -37,6 +37,9 @@ export interface CandidateListItem {
   test_a_score: number | null;
   test_b_score: number | null;
   proctoring_flagged: boolean | null;
+  /** True when the candidate consented to submit despite name/field mismatches
+   * vs OCR — stored under profile_data.data.data_mismatches. */
+  has_data_mismatch: boolean;
 }
 
 export type CandidateSortBy = "preference_match_score" | "test_a_score" | "test_b_score";
