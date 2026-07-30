@@ -211,7 +211,9 @@ export function CandidateDrawer({
                             }`}
                           >
                             {r.actual ?? "—"}
-                            {r.expected != null && (
+                            {r.expected != null &&
+                              r.field !== "test_a_score" &&
+                              r.field !== "test_b_score" && (
                               <span className="text-text-muted font-normal">
                                 {" "}
                                 / min {r.expected}
