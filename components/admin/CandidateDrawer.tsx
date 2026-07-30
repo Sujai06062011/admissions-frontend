@@ -271,9 +271,14 @@ function AdminDiffRow({
 }
 
 function summarizeTabSwitches(events: TabSwitchEvent[]): string {
-  const switchCount = events.filter((e) => e.type === "hidden" || e.type === "blur").length;
-  if (switchCount === 0) return "No tab-switching or window-focus loss detected.";
-  const totalAwayMs = events.reduce((sum, e) => sum + (e.away_ms ?? 0), 0);
+  // Only Page Visibility "hidden" counts as a real tab leave. Older sessions
+  // also logged window blur/focus, which false-positive on camera prompts and
+  // UI focus changes — ignore those for the admin summary.
+  const switchCount = events.filter((e) => e.type === "hidden").length;
+  if (switchCount === 0) return "No tab-switching detected.";
+  const totalAwayMs = events
+    .filter((e) => e.type === "visible")
+    .reduce((sum, e) => sum + (e.away_ms ?? 0), 0);
   const totalAwaySeconds = Math.round(totalAwayMs / 1000);
   return `${switchCount} tab-switch${switchCount === 1 ? "" : "es"} detected (~${totalAwaySeconds}s away total).`;
 }

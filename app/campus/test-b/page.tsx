@@ -381,16 +381,16 @@ type ViewState =
   | { kind: "ready"; prompt: Prompt }
   | { kind: "done" };
 
-/** Tracks tab-switch/window-blur activity for the lifetime of the page (not
- * just while recording) via a ref rather than state, since these events can
- * fire many times and we only ever need the accumulated log at submit time —
- * re-rendering the whole page on every switch would be wasteful. The banner
- * is the one piece that does need to be visible, so that alone is state. */
+/** Tracks real tab leaves via the Page Visibility API only.
+
+ * We deliberately do NOT listen to window blur/focus — those fire for many
+ * harmless reasons during recording (camera permission prompts, clicking the
+ * browser chrome, OS focus changes, media controls) and produced false
+ * "tab-switch" counts for candidates who never left the page. */
 function useTabSwitchTracking() {
   const tabEventsRef = useRef<TabSwitchEvent[]>([]);
   const [banner, setBanner] = useState<string | null>(null);
   const hiddenAtRef = useRef<number | null>(null);
-  const blurredAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     function handleVisibilityChange() {
@@ -406,27 +406,9 @@ function useTabSwitchTracking() {
       }
     }
 
-    function handleBlur() {
-      const now = Date.now();
-      blurredAtRef.current = now;
-      tabEventsRef.current.push({ type: "blur", at: new Date(now).toISOString(), away_ms: null });
-      setBanner("We noticed you switched away from this window — this has been logged.");
-    }
-
-    function handleFocus() {
-      const now = Date.now();
-      const awayMs = blurredAtRef.current != null ? now - blurredAtRef.current : null;
-      blurredAtRef.current = null;
-      tabEventsRef.current.push({ type: "focus", at: new Date(now).toISOString(), away_ms: awayMs });
-    }
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", handleBlur);
-    window.addEventListener("focus", handleFocus);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", handleBlur);
-      window.removeEventListener("focus", handleFocus);
     };
   }, []);
 
