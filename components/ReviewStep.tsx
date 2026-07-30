@@ -77,15 +77,15 @@ function ReviewField({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex items-center justify-between py-[11px] border-b border-border last:border-b-0 gap-4">
-      <span className="text-xs text-text-muted shrink-0">{label}</span>
-      <div className="flex items-center min-w-0">
+    <div className="flex items-start justify-between py-[11px] border-b border-border last:border-b-0 gap-4">
+      <span className="text-xs text-text-muted shrink-0 pt-0.5 w-[130px]">{label}</span>
+      <div className="flex items-start gap-2 flex-1 min-w-0 justify-end">
         <input
           type="text"
           value={value}
           placeholder="Enter manually"
           onChange={(e) => onChange(e.target.value)}
-          className="text-[13.5px] font-semibold text-right bg-transparent border-b border-transparent hover:border-border focus:border-ink-light focus:outline-none px-1 py-0.5 w-[140px]"
+          className="text-[13.5px] font-semibold text-right bg-transparent border-b border-transparent hover:border-border focus:border-ink-light focus:outline-none px-1 py-0.5 flex-1 min-w-0 w-full"
         />
         <FieldTag
           touched={touched}
