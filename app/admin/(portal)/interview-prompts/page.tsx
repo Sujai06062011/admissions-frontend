@@ -178,7 +178,7 @@ export default function InterviewPromptsPage() {
 
   return (
     <div>
-      <AdminTopbar title="Interview Prompts" subtitle={`${PROGRAM_LABEL} · Test B AI video interview prompts`}>
+      <AdminTopbar title="Interview Prompts" subtitle={`${PROGRAM_LABEL} · Video Interview prompts`}>
         <button
           type="button"
           onClick={() => setBankForm({ id: null, name: "" })}
@@ -410,7 +410,7 @@ export default function InterviewPromptsPage() {
       <ConfirmDialog
         open={!!deletePromptTarget}
         title="Delete this prompt?"
-        description="If it's currently referenced by a Test B session, the backend will reject this and show an error instead."
+        description="If it's currently referenced by a Video Interview session, the backend will reject this and show an error instead."
         confirmLabel="Delete"
         tone="danger"
         loading={deletePromptMutation.isPending}

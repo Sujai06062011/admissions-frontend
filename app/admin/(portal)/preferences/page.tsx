@@ -24,8 +24,8 @@ const FIELD_DEFS: FieldDef[] = [
   { field_name: "ug_percentage", label: "UG Percentage", supportsHardCutoff: true, maxCutoff: 100, unit: "%" },
   { field_name: "experience_years", label: "Professional Experience", supportsHardCutoff: true, maxCutoff: 15, unit: "yr" },
   { field_name: "certifications_count", label: "Certifications & Courses", supportsHardCutoff: true, maxCutoff: 10, unit: "" },
-  { field_name: "test_a_score", label: "Campus Test — Test A", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
-  { field_name: "test_b_score", label: "AI Video Interview — Test B", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
+  { field_name: "test_a_score", label: "Campus Test", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
+  { field_name: "test_b_score", label: "Video Interview", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
 ];
 
 interface FieldState {

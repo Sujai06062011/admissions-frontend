@@ -312,7 +312,7 @@ export default function QuestionBankPage() {
 
   return (
     <div>
-      <AdminTopbar title="Question Bank" subtitle={`${PROGRAM_LABEL} · Test A written question banks`}>
+      <AdminTopbar title="Question Bank" subtitle={`${PROGRAM_LABEL} · Campus Test question banks`}>
         <button
           type="button"
           onClick={() => setBankForm({ id: null, name: "" })}
@@ -509,7 +509,7 @@ export default function QuestionBankPage() {
               <div>
                 <h2 className="font-serif text-base font-bold text-text">Test Blueprint</h2>
                 <p className="text-[12.5px] text-text-muted mt-0.5">
-                  Question count, duration, and pass threshold per category for Test A.
+                  Question count, duration, and pass threshold per category for the Campus Test.
                 </p>
               </div>
               <button

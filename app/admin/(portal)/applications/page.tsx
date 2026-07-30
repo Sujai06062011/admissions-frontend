@@ -43,6 +43,16 @@ function initials(name: string | null): string {
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
 }
 
+function formatPercentage(value: number | string | null): string {
+  if (value == null || value === "") return "—";
+  return `${value}%`;
+}
+
+function formatScoreOutOf100(value: number | null): string {
+  if (value == null) return "—";
+  return `${Math.round(value)}/100`;
+}
+
 function CandidateCell({
   candidate,
   isTopPick,
@@ -309,18 +319,18 @@ export default function ApplicationsPage() {
     },
     {
       key: "tenth",
-      header: "10th",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.tenthPercentage) ?? "—",
+      header: "10th %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.tenthPercentage)),
     },
     {
       key: "twelfth",
-      header: "12th",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage) ?? "—",
+      header: "12th %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage)),
     },
     {
       key: "ug",
-      header: "UG",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage) ?? "—",
+      header: "UG %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage)),
     },
     {
       key: "exp",
@@ -354,7 +364,7 @@ export default function ApplicationsPage() {
           );
         }
         if (c.stage === "campus_test") {
-          return <span className="text-[12px] text-text-muted">Awaiting Test A</span>;
+          return <span className="text-[12px] text-text-muted">Awaiting Campus Test</span>;
         }
         if (c.stage === "campus_interview") {
           return (
@@ -401,18 +411,18 @@ export default function ApplicationsPage() {
     },
     {
       key: "tenth",
-      header: "10th",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.tenthPercentage) ?? "—",
+      header: "10th %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.tenthPercentage)),
     },
     {
       key: "twelfth",
-      header: "12th",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage) ?? "—",
+      header: "12th %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage)),
     },
     {
       key: "ug",
-      header: "UG",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage) ?? "—",
+      header: "UG %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage)),
     },
     {
       key: "exp",
@@ -463,28 +473,28 @@ export default function ApplicationsPage() {
     },
     {
       key: "tenth",
-      header: "10th",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.tenthPercentage) ?? "—",
+      header: "10th %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.tenthPercentage)),
     },
     {
       key: "twelfth",
-      header: "12th",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage) ?? "—",
+      header: "12th %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.twelfthPercentage)),
     },
     {
       key: "ug",
-      header: "UG",
-      render: (c) => reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage) ?? "—",
+      header: "UG %",
+      render: (c) => formatPercentage(reasonValue(c.reasons, SCREENING_FIELD_NAMES.ugPercentage)),
     },
     {
       key: "test_a",
-      header: "Test A",
-      render: (c) => (c.test_a_score == null ? "—" : Math.round(c.test_a_score)),
+      header: "Campus Test",
+      render: (c) => formatScoreOutOf100(c.test_a_score),
     },
     {
       key: "test_b",
-      header: "Test B",
-      render: (c) => (c.test_b_score == null ? "—" : Math.round(c.test_b_score)),
+      header: "Video Interview",
+      render: (c) => formatScoreOutOf100(c.test_b_score),
     },
     {
       key: "action",
@@ -504,7 +514,7 @@ export default function ApplicationsPage() {
           );
         }
         if (tab === "campus_test") {
-          return <span className="text-[12px] text-text-muted">Awaiting Test A</span>;
+          return <span className="text-[12px] text-text-muted">Awaiting Campus Test</span>;
         }
         if (tab === "final_interview") {
           return (

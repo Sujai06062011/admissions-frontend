@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getCandidate,
   getDocumentSignedUrl,
   getRecordingSignedUrl,
   getProctoringSnapshotSignedUrl,
 } from "@/lib/adminApi";
-import type { RubricScore, TabSwitchEvent } from "@/lib/adminTypes";
+import type { RubricScore, TabSwitchEvent, TestAGeneratedQuestion, TestASessionResponse } from "@/lib/adminTypes";
 import { CloseIcon } from "./icons";
 
 function formatDate(value: string | null): string {
@@ -27,8 +27,157 @@ function normalizedTestBScore(rubricScore: RubricScore): number | null {
   return Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 10);
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  "10th_percentage": "10th %",
+  "12th_percentage": "12th %",
+  ug_percentage: "UG %",
+  experience_years: "Experience",
+  certifications_count: "Certifications",
+  test_a_score: "Campus Test",
+  test_b_score: "Video Interview",
+};
+
 function labelize(value: string): string {
-  return value.replace(/_/g, " ");
+  return FIELD_LABELS[value] ?? value.replace(/_/g, " ");
+}
+
+function formatReasonValue(field: string, actual: number | string | null): string {
+  if (actual == null || actual === "") return "—";
+  if (field === "10th_percentage" || field === "12th_percentage" || field === "ug_percentage") {
+    return `${actual}%`;
+  }
+  if (field === "test_a_score" || field === "test_b_score") {
+    const n = typeof actual === "number" ? actual : Number(actual);
+    return Number.isFinite(n) ? `${Math.round(n)}/100` : String(actual);
+  }
+  if (field === "experience_years") return `${actual}yr`;
+  return String(actual);
+}
+
+function sameIndexSet(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = new Set(a);
+  return b.every((i) => left.has(i));
+}
+
+function isQuestionCorrect(question: TestAGeneratedQuestion, selected: number[]): boolean {
+  return sameIndexSet(selected, question.correct_indices ?? []);
+}
+
+function CampusTestSection({ session }: { session: TestASessionResponse }) {
+  const [showAnswers, setShowAnswers] = useState(false);
+  const questions = Array.isArray(session.generated_questions) ? session.generated_questions : [];
+  const answers = session.answers ?? {};
+  const answered = questions.filter((q) => (answers[q.question_id] ?? []).length > 0).length;
+  const correctCount = questions.filter((q) =>
+    isQuestionCorrect(q, answers[q.question_id] ?? []),
+  ).length;
+
+  return (
+    <section>
+      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
+        Campus Test
+      </h4>
+      <div className="bg-bg rounded-lg p-3 text-[12.5px] space-y-1.5">
+        <div className="flex justify-between">
+          <span className="text-text-muted">Score</span>
+          <span className="font-semibold text-text">
+            {session.score == null ? "—" : `${Math.round(session.score)}/100`}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-text-muted">Submitted</span>
+          <span className="font-semibold text-text">{formatDate(session.submitted_at)}</span>
+        </div>
+        {questions.length > 0 && (
+          <>
+            <div className="flex justify-between pt-1.5 border-t border-border">
+              <span className="text-text-muted">Correct</span>
+              <span className="font-semibold text-text">
+                {correctCount}/{questions.length}
+                <span className="text-text-muted font-normal">
+                  {" "}
+                  · {answered} answered
+                </span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAnswers((v) => !v)}
+              className="text-[11.5px] font-semibold text-ink-light"
+            >
+              {showAnswers ? "Hide answers ↑" : "View answers →"}
+            </button>
+            {showAnswers && (
+              <ul className="space-y-3 pt-1.5 border-t border-border">
+                {questions.map((question, index) => {
+                  const selected = answers[question.question_id] ?? [];
+                  const correct = isQuestionCorrect(question, selected);
+                  const expected = new Set(question.correct_indices ?? []);
+                  const chosen = new Set(selected);
+                  return (
+                    <li key={question.question_id} className="space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-text leading-snug">
+                          <span className="text-text-muted font-normal">Q{index + 1}. </span>
+                          {question.question_text}
+                        </p>
+                        <span
+                          className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                            correct ? "bg-forest/10 text-forest" : "bg-brick/10 text-brick"
+                          }`}
+                        >
+                          {correct ? "Correct" : "Wrong"}
+                        </span>
+                      </div>
+                      <ul className="space-y-1">
+                        {(question.options ?? []).map((option, optionIndex) => {
+                          const isSelected = chosen.has(optionIndex);
+                          const isExpected = expected.has(optionIndex);
+                          let tone = "text-text-muted border-transparent";
+                          if (isSelected && isExpected) {
+                            tone = "text-forest border-forest/30 bg-forest/5";
+                          } else if (isSelected && !isExpected) {
+                            tone = "text-brick border-brick/30 bg-brick/5";
+                          } else if (!isSelected && isExpected) {
+                            tone = "text-forest border-forest/20 border-dashed";
+                          }
+                          return (
+                            <li
+                              key={`${question.question_id}-${optionIndex}`}
+                              className={`rounded-md border px-2 py-1 text-[12px] leading-snug ${tone}`}
+                            >
+                              <span className="font-semibold mr-1.5">
+                                {String.fromCharCode(65 + optionIndex)}.
+                              </span>
+                              {option}
+                              {isSelected && (
+                                <span className="ml-1.5 text-[10px] font-semibold uppercase">
+                                  Selected
+                                </span>
+                              )}
+                              {!isSelected && isExpected && (
+                                <span className="ml-1.5 text-[10px] font-semibold uppercase">
+                                  Correct
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {selected.length === 0 && (
+                        <p className="text-[11px] text-text-muted italic">No answer submitted</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
 interface StoredNameMismatch {
@@ -191,11 +340,19 @@ export function CandidateDrawer({
   applicationId: string | null;
   onClose: () => void;
 }) {
-  const { data, isLoading, isError } = useQuery({
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, isSuccess } = useQuery({
     queryKey: ["candidate", applicationId],
     queryFn: () => getCandidate(applicationId as string),
     enabled: !!applicationId,
   });
+
+  // Opening the drawer recomputes preference match on the backend — refresh
+  // the applications table so Campus Test scores / composites catch up.
+  useEffect(() => {
+    if (!isSuccess) return;
+    queryClient.invalidateQueries({ queryKey: ["candidates"] });
+  }, [isSuccess, applicationId, queryClient]);
 
   if (!applicationId) return null;
 
@@ -321,19 +478,19 @@ export function CandidateDrawer({
                     <ul className="space-y-1.5 border-t border-border pt-2.5">
                       {data.preference_match.reasons.map((r) => (
                         <li key={r.field} className="flex items-center justify-between text-[12.5px] gap-3">
-                          <span className="text-text-muted capitalize">{labelize(r.field)}</span>
+                          <span className="text-text-muted">{labelize(r.field)}</span>
                           <span
                             className={`font-semibold text-right ${
                               r.passed ? "text-forest" : "text-brick"
                             }`}
                           >
-                            {r.actual ?? "—"}
+                            {formatReasonValue(r.field, r.actual)}
                             {r.expected != null &&
                               r.field !== "test_a_score" &&
                               r.field !== "test_b_score" && (
                               <span className="text-text-muted font-normal">
                                 {" "}
-                                / min {r.expected}
+                                / min {formatReasonValue(r.field, r.expected)}
                               </span>
                             )}
                           </span>
@@ -394,30 +551,12 @@ export function CandidateDrawer({
               </section>
             )}
 
-            {data.test_a_session && (
-              <section>
-                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
-                  Test A · Written
-                </h4>
-                <div className="bg-bg rounded-lg p-3 text-[12.5px] space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Score</span>
-                    <span className="font-semibold text-text">{data.test_a_session.score ?? "—"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-muted">Submitted</span>
-                    <span className="font-semibold text-text">
-                      {formatDate(data.test_a_session.submitted_at)}
-                    </span>
-                  </div>
-                </div>
-              </section>
-            )}
+            {data.test_a_session && <CampusTestSection session={data.test_a_session} />}
 
             {data.test_b_session && (
               <section>
                 <h4 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
-                  Test B · AI Interview
+                  Video Interview
                 </h4>
                 <div className="bg-bg rounded-lg p-3 text-[12.5px] space-y-1.5">
                   <div className="flex justify-between">

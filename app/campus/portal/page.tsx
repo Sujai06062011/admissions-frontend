@@ -73,7 +73,7 @@ function PortalContent({ applicationId }: { applicationId: string }) {
           {/* Test A */}
           <div className="bg-surface border border-border rounded-[14px] px-[24px] py-[22px]">
             <div className="flex items-center justify-between mb-2">
-              <div className="font-serif text-[16.5px] font-semibold">Written Test</div>
+              <div className="font-serif text-[16.5px] font-semibold">Campus Test</div>
               {data.test_a.submitted ? (
                 <StatusPill tone="done">Submitted</StatusPill>
               ) : data.test_a.in_progress ? (

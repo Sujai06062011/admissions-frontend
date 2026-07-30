@@ -60,10 +60,18 @@ export interface RubricScore {
   coherence?: number;
 }
 
+export interface TestAGeneratedQuestion {
+  question_id: string;
+  question_text: string;
+  options: string[];
+  answer_type: string;
+  correct_indices: number[];
+}
+
 export interface TestASessionResponse {
   application_id: string;
-  generated_questions: unknown;
-  answers: unknown;
+  generated_questions: TestAGeneratedQuestion[];
+  answers: Record<string, number[]> | null;
   score: number | null;
   started_at: string | null;
   submitted_at: string | null;

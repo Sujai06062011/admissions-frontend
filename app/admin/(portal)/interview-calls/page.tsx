@@ -144,8 +144,8 @@ export default function InterviewCallsPage() {
                   <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted px-4 py-2.5">Rank</th>
                   <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted px-4 py-2.5">Candidate</th>
                   <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted px-4 py-2.5">Composite</th>
-                  <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted px-4 py-2.5">Test A</th>
-                  <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted px-4 py-2.5">Test B</th>
+                  <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted px-4 py-2.5">Campus Test</th>
+                  <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted px-4 py-2.5">Video Interview</th>
                 </tr>
               </thead>
               <tbody>
@@ -181,8 +181,8 @@ export default function InterviewCallsPage() {
                         band={scoreBands.get(c.preference_match_score) ?? "unscored"}
                       />
                     </td>
-                    <td className="px-4 py-3">{c.test_a_score == null ? "—" : Math.round(c.test_a_score)}</td>
-                    <td className="px-4 py-3">{c.test_b_score == null ? "—" : Math.round(c.test_b_score)}</td>
+                    <td className="px-4 py-3">{c.test_a_score == null ? "—" : `${Math.round(c.test_a_score)}/100`}</td>
+                    <td className="px-4 py-3">{c.test_b_score == null ? "—" : `${Math.round(c.test_b_score)}/100`}</td>
                   </tr>
                 ))}
               </tbody>
