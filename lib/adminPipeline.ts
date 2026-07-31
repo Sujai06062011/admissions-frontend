@@ -211,3 +211,55 @@ export const STAGE_BADGE_COLORS: Record<PipelineStage, string> = {
   final_interview: "bg-forest-soft text-forest",
   offered: "bg-forest text-white",
 };
+
+export type ScreeningActionKey =
+  | "move_to_campus"
+  | "awaiting_campus_test"
+  | "move_to_final"
+  | "mark_offered"
+  | "override";
+
+export const SCREENING_ACTION_LABELS: Record<ScreeningActionKey, string> = {
+  move_to_campus: "Move to Campus Test",
+  awaiting_campus_test: "Awaiting Campus Test",
+  move_to_final: "Move to Final Interview",
+  mark_offered: "Mark as Offered",
+  override: "Override & Accept",
+};
+
+export function screeningActionKey(candidate: CandidateWithMatch): ScreeningActionKey | null {
+  switch (candidate.stage) {
+    case "screening_rejected":
+      return "override";
+    case "screening_passed":
+      return "move_to_campus";
+    case "campus_test":
+      return "awaiting_campus_test";
+    case "campus_interview":
+      return "move_to_final";
+    case "final_interview":
+      return "mark_offered";
+    default:
+      return null;
+  }
+}
+
+export function matchesScreeningFilters(
+  candidate: CandidateWithMatch,
+  filters: {
+    stages: ReadonlySet<PipelineStage>;
+    actions: ReadonlySet<ScreeningActionKey>;
+    bands: ReadonlySet<ScoreBand>;
+    bandOf: (score: number | null) => ScoreBand;
+  },
+): boolean {
+  if (filters.stages.size > 0 && !filters.stages.has(candidate.stage)) return false;
+  if (filters.actions.size > 0) {
+    const action = screeningActionKey(candidate);
+    if (!action || !filters.actions.has(action)) return false;
+  }
+  if (filters.bands.size > 0) {
+    if (!filters.bands.has(filters.bandOf(candidate.preference_match_score))) return false;
+  }
+  return true;
+}

@@ -55,9 +55,9 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 const BRAND_STATS = [
-  { value: "312", label: "Applications" },
-  { value: "94.7", label: "Top Score" },
-  { value: "5", label: "Pipeline Stages" },
+  { value: "~70%", label: "Auto-screened" },
+  { value: "3×", label: "Faster shortlist" },
+  { value: "1", label: "Dashboard · 5 stages" },
 ];
 
 function LoginForm() {
@@ -113,11 +113,11 @@ function LoginForm() {
             Automate hard-filter screening, rank by composite score, and manage your entire
             admissions pipeline from one dashboard.
           </p>
-          <div className="flex gap-8">
+          <div className="flex gap-6">
             {BRAND_STATS.map((stat) => (
-              <div key={stat.label}>
+              <div key={stat.label} className="min-w-0 max-w-[7.5rem]">
                 <div className="text-gold text-2xl font-bold font-serif">{stat.value}</div>
-                <div className="text-[11px] text-white/60 mt-1">{stat.label}</div>
+                <div className="text-[11px] text-white/60 mt-1 leading-snug">{stat.label}</div>
               </div>
             ))}
           </div>

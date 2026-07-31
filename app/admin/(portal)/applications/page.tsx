@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   callForInterview,
@@ -13,14 +13,18 @@ import { PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
 import {
   STAGE_BADGE_COLORS,
   STAGE_BADGE_LABELS,
+  SCREENING_ACTION_LABELS,
   SCREENING_FIELD_NAMES,
   attachMatchResults,
   computeScoreBands,
   countByStage,
+  matchesScreeningFilters,
   reasonValue,
   searchCandidates,
   withRank,
   type CandidateWithMatch,
+  type PipelineStage,
+  type ScreeningActionKey,
 } from "@/lib/adminPipeline";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { StageTabs, type StageTabDef } from "@/components/admin/StageTabs";
@@ -28,7 +32,7 @@ import { ScoreGauge } from "@/components/admin/ScoreGauge";
 import { Table, type TableColumn } from "@/components/admin/Table";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { CandidateDrawer } from "@/components/admin/CandidateDrawer";
-import { ChevronDownIcon, SearchIcon } from "@/components/admin/icons";
+import { ChevronDownIcon, CloseIcon, SearchIcon, SlidersIcon } from "@/components/admin/icons";
 
 type StageTabKey = "screening" | "campus_test" | "campus_interview" | "final_interview" | "offered";
 
@@ -153,6 +157,170 @@ function rowHighlightClass(candidate: CandidateWithMatch, overriddenIds: Set<str
   return "";
 }
 
+const SCREENING_STAGE_FILTERS: PipelineStage[] = [
+  "screening_passed",
+  "campus_test",
+  "campus_interview",
+  "final_interview",
+  "offered",
+  "screening_rejected",
+];
+
+const SCREENING_ACTION_FILTERS: ScreeningActionKey[] = [
+  "move_to_campus",
+  "awaiting_campus_test",
+  "move_to_final",
+  "mark_offered",
+  "override",
+];
+
+function toggleInSet<T>(set: Set<T>, value: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
+function ScreeningFilterMenu({
+  stageFilters,
+  actionFilters,
+  onApply,
+  onClear,
+}: {
+  stageFilters: Set<PipelineStage>;
+  actionFilters: Set<ScreeningActionKey>;
+  onApply: (stages: Set<PipelineStage>, actions: Set<ScreeningActionKey>) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftStages, setDraftStages] = useState<Set<PipelineStage>>(new Set());
+  const [draftActions, setDraftActions] = useState<Set<ScreeningActionKey>>(new Set());
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const activeCount = stageFilters.size + actionFilters.size;
+
+  useEffect(() => {
+    if (!open) return;
+    setDraftStages(new Set(stageFilters));
+    setDraftActions(new Set(actionFilters));
+  }, [open, stageFilters, actionFilters]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1.5 px-3 py-2 border rounded-lg text-[13px] font-semibold transition ${
+          activeCount > 0
+            ? "border-ink bg-ink text-white"
+            : "border-border bg-surface text-text hover:border-ink/30"
+        }`}
+      >
+        <SlidersIcon className="w-4 h-4" />
+        Filter
+        {activeCount > 0 && (
+          <span
+            className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold inline-flex items-center justify-center ${
+              activeCount > 0 ? "bg-white/20 text-white" : "bg-ink/10 text-ink"
+            }`}
+          >
+            {activeCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-30 w-[320px] bg-surface border border-border rounded-xl shadow-lg p-3.5 space-y-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
+              Stage
+            </div>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {SCREENING_STAGE_FILTERS.map((stage) => (
+                <label
+                  key={stage}
+                  className="flex items-center gap-2 text-[13px] text-text cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={draftStages.has(stage)}
+                    onChange={() => setDraftStages((prev) => toggleInSet(prev, stage))}
+                    className="w-3.5 h-3.5 accent-ink"
+                  />
+                  {STAGE_BADGE_LABELS[stage]}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
+              Action
+            </div>
+            <div className="space-y-1.5">
+              {SCREENING_ACTION_FILTERS.map((action) => (
+                <label
+                  key={action}
+                  className="flex items-center gap-2 text-[13px] text-text cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={draftActions.has(action)}
+                    onChange={() => setDraftActions((prev) => toggleInSet(prev, action))}
+                    className="w-3.5 h-3.5 accent-ink"
+                  />
+                  {SCREENING_ACTION_LABELS[action]}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={() => {
+                setDraftStages(new Set());
+                setDraftActions(new Set());
+                onClear();
+                setOpen(false);
+              }}
+              className="text-[12.5px] font-semibold text-text-muted hover:text-text"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onApply(new Set(draftStages), new Set(draftActions));
+                setOpen(false);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-ink text-white text-[12.5px] font-semibold hover:bg-ink-dark"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ApplicationsPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<StageTabKey>("screening");
@@ -163,6 +331,8 @@ export default function ApplicationsPage() {
   const [passedExpanded, setPassedExpanded] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [overrideReason, setOverrideReason] = useState("");
+  const [stageFilters, setStageFilters] = useState<Set<PipelineStage>>(new Set());
+  const [actionFilters, setActionFilters] = useState<Set<ScreeningActionKey>>(new Set());
 
   const candidatesQuery = useQuery({
     queryKey: ["candidates", PROGRAM_ID],
@@ -205,6 +375,29 @@ export default function ApplicationsPage() {
 
   const filtered = useMemo(() => searchCandidates(allCandidates, search), [allCandidates, search]);
   const counts = useMemo(() => countByStage(allCandidates), [allCandidates]);
+
+  const screeningFiltered = useMemo(() => {
+    if (stageFilters.size === 0 && actionFilters.size === 0) {
+      return filtered;
+    }
+    return filtered.filter((c) =>
+      matchesScreeningFilters(c, {
+        stages: stageFilters,
+        actions: actionFilters,
+        bands: new Set(),
+        bandOf: () => "unscored",
+      }),
+    );
+  }, [filtered, stageFilters, actionFilters]);
+
+  const passedTotal = useMemo(
+    () => filtered.filter((c) => c.stage !== "screening_rejected").length,
+    [filtered],
+  );
+  const rejectedTotal = useMemo(
+    () => filtered.filter((c) => c.stage === "screening_rejected").length,
+    [filtered],
+  );
 
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ["candidates", PROGRAM_ID] });
@@ -286,14 +479,16 @@ export default function ApplicationsPage() {
     { key: "offered", label: "Offered", count: counts.offered },
   ];
 
-  const passedRows = withRank(filtered.filter((c) => c.stage !== "screening_rejected"));
-  const rejectedRows = withRank(filtered.filter((c) => c.stage === "screening_rejected"));
+  const passedRows = withRank(screeningFiltered.filter((c) => c.stage !== "screening_rejected"));
+  const rejectedRows = withRank(screeningFiltered.filter((c) => c.stage === "screening_rejected"));
   const passedScoreBands = computeScoreBands(passedRows.map((c) => c.preference_match_score));
   const rejectedScoreBands = computeScoreBands(rejectedRows.map((c) => c.preference_match_score));
 
   const stageRows =
     tab === "screening" ? [] : withRank(filtered.filter((c) => c.stage === tab));
   const stageScoreBands = computeScoreBands(stageRows.map((c) => c.preference_match_score));
+
+  const filtersActive = stageFilters.size > 0 || actionFilters.size > 0;
 
   function confirmCopy(action: PendingAction) {
     const name = action.candidate.applicant_name || "this candidate";
@@ -565,14 +760,40 @@ export default function ApplicationsPage() {
         title="Applications"
         subtitle={`${PROGRAM_LABEL} · ${allCandidates.length} total received`}
       >
-        <div className="relative">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or ID..."
-            className="pl-9 pr-3 py-2 border border-border rounded-lg text-[13px] w-64 bg-surface focus:outline-none focus:ring-2 focus:ring-ink/15"
-          />
+        <div className="flex items-center gap-2">
+          {tab === "screening" && (
+            <ScreeningFilterMenu
+              stageFilters={stageFilters}
+              actionFilters={actionFilters}
+              onApply={(stages, actions) => {
+                setStageFilters(stages);
+                setActionFilters(actions);
+              }}
+              onClear={() => {
+                setStageFilters(new Set());
+                setActionFilters(new Set());
+              }}
+            />
+          )}
+          <div className="relative">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or ID..."
+              className="pl-9 pr-9 py-2 border border-border rounded-lg text-[13px] w-64 bg-surface focus:outline-none focus:ring-2 focus:ring-ink/15"
+            />
+            {search.trim().length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text"
+              >
+                <CloseIcon className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </AdminTopbar>
 
@@ -598,6 +819,28 @@ export default function ApplicationsPage() {
 
       {!isLoading && !isError && tab === "screening" && (
         <div className="space-y-5">
+          {filtersActive && (
+            <div className="flex items-center justify-between gap-3 text-[12.5px] text-text-muted">
+              <span>
+                Filtering by{" "}
+                {[
+                  ...Array.from(stageFilters).map((s) => STAGE_BADGE_LABELS[s]),
+                  ...Array.from(actionFilters).map((a) => SCREENING_ACTION_LABELS[a]),
+                ].join(" · ")}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setStageFilters(new Set());
+                  setActionFilters(new Set());
+                }}
+                className="font-semibold text-ink-light hover:text-ink shrink-0"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <button
               type="button"
@@ -607,7 +850,9 @@ export default function ApplicationsPage() {
               <span className="flex items-center gap-2 font-serif font-bold text-text text-[15px]">
                 <span className="text-forest">✓</span> Passed Screening
                 <span className="text-text-muted text-[12.5px] font-sans font-normal">
-                  {passedRows.length} candidates
+                  {filtersActive
+                    ? `${passedRows.length} of ${passedTotal} candidates`
+                    : `${passedRows.length} candidates`}
                 </span>
               </span>
               <ChevronDownIcon className={`w-4 h-4 text-text-muted transition ${passedExpanded ? "" : "-rotate-90"}`} />
@@ -617,7 +862,11 @@ export default function ApplicationsPage() {
                 columns={passedColumns}
                 rows={passedRows}
                 rowKey={(c) => c.application_id}
-                emptyMessage="No candidates have passed screening yet."
+                emptyMessage={
+                  filtersActive
+                    ? "No passed candidates match these filters."
+                    : "No candidates have passed screening yet."
+                }
                 onRowClick={(c) => setDrawerId(c.application_id)}
                 rowClassName={(c) => rowHighlightClass(c, overriddenIds)}
               />
@@ -633,7 +882,9 @@ export default function ApplicationsPage() {
               <span className="flex items-center gap-2 font-serif font-bold text-text text-[15px]">
                 <span className="text-brick">⊘</span> Rejected at Screening
                 <span className="text-text-muted text-[12.5px] font-sans font-normal">
-                  {rejectedRows.length} candidates
+                  {filtersActive
+                    ? `${rejectedRows.length} of ${rejectedTotal} candidates`
+                    : `${rejectedRows.length} candidates`}
                 </span>
               </span>
               <ChevronDownIcon className={`w-4 h-4 text-text-muted transition ${rejectedExpanded ? "" : "-rotate-90"}`} />
@@ -643,7 +894,11 @@ export default function ApplicationsPage() {
                 columns={rejectedColumns}
                 rows={rejectedRows}
                 rowKey={(c) => c.application_id}
-                emptyMessage="No candidates rejected at screening."
+                emptyMessage={
+                  filtersActive
+                    ? "No rejected candidates match these filters."
+                    : "No candidates rejected at screening."
+                }
                 onRowClick={(c) => setDrawerId(c.application_id)}
                 rowClassName={(c) => rowHighlightClass(c, overriddenIds)}
               />
