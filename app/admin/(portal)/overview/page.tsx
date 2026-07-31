@@ -1,35 +1,67 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { getFunnel } from "@/lib/adminApi";
+import {
+  listAdminDecisions,
+  listCandidates,
+  listPreferenceMatchResults,
+} from "@/lib/adminApi";
 import { ADMISSIONS_CYCLE_LABEL, PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
+import { attachMatchResults, countByStage } from "@/lib/adminPipeline";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { StatCard } from "@/components/admin/StatCard";
 import { FunnelBars, StageBreakdownList, type FunnelStage } from "@/components/admin/FunnelBars";
 import { AlertIcon, AwardIcon, CheckCircleIcon, SlidersIcon, UsersIcon, XCircleIcon } from "@/components/admin/icons";
 
 export default function OverviewPage() {
-  const { data: funnel, isLoading, isError } = useQuery({
-    queryKey: ["funnel", PROGRAM_ID],
-    queryFn: () => getFunnel(PROGRAM_ID),
+  const candidatesQuery = useQuery({
+    queryKey: ["candidates", PROGRAM_ID],
+    queryFn: () => listCandidates({ program_id: PROGRAM_ID, limit: 500 }),
+  });
+  const matchResultsQuery = useQuery({
+    queryKey: ["preference-match-results", PROGRAM_ID],
+    queryFn: () => listPreferenceMatchResults({ program_id: PROGRAM_ID }),
+  });
+  const decisionsQuery = useQuery({
+    queryKey: ["admin-decisions", PROGRAM_ID, "manual_override"],
+    queryFn: () => listAdminDecisions({ program_id: PROGRAM_ID, decision: "manual_override" }),
   });
 
-  const passedScreening = funnel ? funnel.received - funnel.rejected_on_preference_match : 0;
-  const passRate = funnel && funnel.received > 0 ? Math.round((passedScreening / funnel.received) * 100) : 0;
-  const conversionRate =
-    funnel && funnel.received > 0 ? Math.round((funnel.offered / funnel.received) * 100) : 0;
+  const overriddenIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const d of decisionsQuery.data ?? []) ids.add(d.application_id);
+    return ids;
+  }, [decisionsQuery.data]);
 
-  const stages: FunnelStage[] = funnel
-    ? [
-        { key: "received", label: "Received", value: funnel.received },
-        { key: "passed_screening", label: "Passed Screening", value: passedScreening },
-        { key: "campus_test", label: "Campus Test", value: funnel.test_a_complete },
-        { key: "campus_interview", label: "Campus Interview", value: funnel.test_b_complete },
-        { key: "final_interview", label: "Final Interview", value: funnel.called_for_interview },
-        { key: "offered", label: "Offered", value: funnel.offered },
-      ]
-    : [];
+  const allCandidates = useMemo(() => {
+    if (!candidatesQuery.data) return [];
+    return attachMatchResults(candidatesQuery.data, matchResultsQuery.data ?? [], overriddenIds);
+  }, [candidatesQuery.data, matchResultsQuery.data, overriddenIds]);
+
+  const counts = useMemo(() => countByStage(allCandidates), [allCandidates]);
+  const rejectedAtScreening = useMemo(
+    () => allCandidates.filter((c) => c.stage === "screening_rejected").length,
+    [allCandidates],
+  );
+  const passedScreening = allCandidates.length - rejectedAtScreening;
+  const received = allCandidates.length;
+  const passRate = received > 0 ? Math.round((passedScreening / received) * 100) : 0;
+  const conversionRate = received > 0 ? Math.round((counts.offered / received) * 100) : 0;
+
+  const stages: FunnelStage[] = [
+    { key: "received", label: "Received", value: received },
+    { key: "passed_screening", label: "Passed Screening", value: passedScreening },
+    { key: "campus_test", label: "Campus Test", value: counts.campus_test },
+    { key: "campus_interview", label: "Campus Interview", value: counts.campus_interview },
+    { key: "final_interview", label: "Final Interview", value: counts.final_interview },
+    { key: "offered", label: "Offered", value: counts.offered },
+  ];
+
+  const isLoading =
+    candidatesQuery.isLoading || matchResultsQuery.isLoading || decisionsQuery.isLoading;
+  const isError = candidatesQuery.isError || matchResultsQuery.isError || decisionsQuery.isError;
 
   return (
     <div>
@@ -45,20 +77,20 @@ export default function OverviewPage() {
 
       {isError && (
         <div className="bg-brick-soft border border-brick/30 text-brick text-sm rounded-xl px-4 py-3 mb-6">
-          Couldn&apos;t load the funnel data. The backend may be unreachable — try refreshing.
+          Couldn&apos;t load overview data. The backend may be unreachable — try refreshing.
         </div>
       )}
 
       {isLoading && <div className="text-text-muted text-sm">Loading overview…</div>}
 
-      {funnel && (
+      {!isLoading && !isError && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <StatCard
               icon={<UsersIcon className="w-[18px] h-[18px]" />}
               iconBg="bg-ink-light/15"
               iconColor="text-ink-light"
-              value={funnel.received}
+              value={received}
               label="Total Applications"
               caption="All-time total"
             />
@@ -75,7 +107,7 @@ export default function OverviewPage() {
               icon={<XCircleIcon className="w-[18px] h-[18px]" />}
               iconBg="bg-brick-soft"
               iconColor="text-brick"
-              value={funnel.rejected_on_preference_match}
+              value={rejectedAtScreening}
               label="Rejected at Screening"
               caption="Hard reject / mismatch"
               captionColor="text-brick"
@@ -84,7 +116,7 @@ export default function OverviewPage() {
               icon={<AwardIcon className="w-[18px] h-[18px]" />}
               iconBg="bg-gold-soft"
               iconColor="text-gold"
-              value={funnel.offered}
+              value={counts.offered}
               label="Offers Extended"
               caption={`${conversionRate}% conversion`}
               captionColor="text-gold"
@@ -94,9 +126,10 @@ export default function OverviewPage() {
           <div className="bg-surface border border-border rounded-xl p-5 mb-6">
             <div className="flex items-start justify-between mb-5 flex-wrap gap-2">
               <div>
-                <h2 className="font-serif text-base font-bold text-text">Applicant Pipeline Funnel</h2>
+                <h2 className="font-serif text-base font-bold text-text">Applicant Pipeline</h2>
                 <p className="text-text-muted text-[12.5px] mt-0.5">
-                  Stage-by-stage conversion · {funnel.received} applications received
+                  Current headcount by stage · same counts as Applications tabs · {received}{" "}
+                  received
                 </p>
               </div>
               <Link
@@ -106,7 +139,7 @@ export default function OverviewPage() {
                 View All Applications →
               </Link>
             </div>
-            <FunnelBars stages={stages} />
+            <FunnelBars stages={stages} showDropOff={false} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

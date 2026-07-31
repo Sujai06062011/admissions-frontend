@@ -6,7 +6,13 @@ export interface FunnelStage {
 
 const BAR_COLORS = ["bg-ink-dark", "bg-ink", "bg-ink-light", "bg-forest", "bg-forest", "bg-gold"];
 
-export function FunnelBars({ stages }: { stages: FunnelStage[] }) {
+export function FunnelBars({
+  stages,
+  showDropOff = true,
+}: {
+  stages: FunnelStage[];
+  showDropOff?: boolean;
+}) {
   const total = stages[0]?.value || 0;
 
   return (
@@ -15,7 +21,7 @@ export function FunnelBars({ stages }: { stages: FunnelStage[] }) {
         const pct = total === 0 ? 0 : Math.round((stage.value / total) * 100);
         const prevValue = i === 0 ? null : stages[i - 1].value;
         const dropOff =
-          prevValue == null || prevValue === 0
+          !showDropOff || prevValue == null || prevValue === 0
             ? null
             : Math.round(((prevValue - stage.value) / prevValue) * 100);
 
