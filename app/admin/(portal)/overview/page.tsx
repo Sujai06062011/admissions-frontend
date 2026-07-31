@@ -76,8 +76,8 @@ export default function OverviewPage() {
               iconBg="bg-brick-soft"
               iconColor="text-brick"
               value={funnel.rejected_on_preference_match}
-              label="Rejection Reasons"
-              caption="Auto-rejected"
+              label="Rejected at Screening"
+              caption="Hard reject / mismatch"
               captionColor="text-brick"
             />
             <StatCard
