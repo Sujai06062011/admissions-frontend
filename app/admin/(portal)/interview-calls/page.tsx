@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { callForInterview, listCandidates } from "@/lib/adminApi";
 import { PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
-import { computeScoreBands, withRank } from "@/lib/adminPipeline";
-import type { CallForInterviewResult, CandidateListItem } from "@/lib/adminTypes";
+import { computeScoreBands, isReadyForInterviewCall, withRank } from "@/lib/adminPipeline";
+import type { CallForInterviewResult } from "@/lib/adminTypes";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { ScoreGauge } from "@/components/admin/ScoreGauge";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
@@ -34,17 +34,10 @@ export default function InterviewCallsPage() {
       }),
   });
 
-  // Eligible = has arrived at campus and completed both Test A and Test B
-  // but hasn't already been called. There's no dedicated backend flag for
-  // this — it's derived from status + score presence, matching the same
-  // heuristic used on the Applications page.
+  // Eligible = campus status + both Campus Test and Video Interview scores.
+  // Shared with the sidebar badge via isReadyForInterviewCall.
   const eligible = useMemo(() => {
-    const list = (candidatesQuery.data ?? []).filter(
-      (c: CandidateListItem) =>
-        (c.status === "moved_to_campus" || c.status === "testing_complete") &&
-        c.test_a_score != null &&
-        c.test_b_score != null,
-    );
+    const list = (candidatesQuery.data ?? []).filter(isReadyForInterviewCall);
     return withRank(list);
   }, [candidatesQuery.data]);
 

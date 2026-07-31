@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getFunnel } from "@/lib/adminApi";
+import { getFunnel, listCandidates } from "@/lib/adminApi";
 import { ADMISSIONS_CYCLE_LABEL, PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
+import { isReadyForInterviewCall } from "@/lib/adminPipeline";
 import { useAdminAuth } from "./AdminAuthProvider";
 import {
   BookIcon,
@@ -50,14 +52,24 @@ export function AdminSidebar() {
     queryFn: () => getFunnel(PROGRAM_ID),
   });
 
+  // Same candidates cache as Applications / Interview Calls, so the badge
+  // uses the identical ready-to-call rule as the Outreach page list.
+  const { data: candidates } = useQuery({
+    queryKey: ["candidates", PROGRAM_ID],
+    queryFn: () =>
+      listCandidates({
+        program_id: PROGRAM_ID,
+        sort_by: "preference_match_score",
+        order: "desc",
+        limit: 500,
+      }),
+  });
+
   const applicationsBadge = funnel?.received;
-  // The funnel only exposes cumulative "reached this stage" counts, not a
-  // ready-to-call set, so this estimates it as candidates who've completed
-  // both campus activities minus those already called — a heuristic, not a
-  // real backend count.
-  const interviewCallsBadge = funnel
-    ? Math.max(0, Math.min(funnel.test_a_complete, funnel.test_b_complete) - funnel.called_for_interview)
-    : undefined;
+  const interviewCallsBadge = useMemo(() => {
+    if (!candidates) return undefined;
+    return candidates.filter(isReadyForInterviewCall).length;
+  }, [candidates]);
 
   function badgeFor(href: string): number | undefined {
     if (href === "/admin/applications") return applicationsBadge;

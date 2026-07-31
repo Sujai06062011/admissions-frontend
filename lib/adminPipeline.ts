@@ -116,6 +116,19 @@ export function countByStage(candidates: CandidateWithMatch[]) {
   };
 }
 
+/**
+ * Ready for Outreach → Interview Calls: still on campus (not yet called)
+ * and both Campus Test + Video Interview scores are present.
+ * Keep sidebar badge and Interview Calls page on this same rule.
+ */
+export function isReadyForInterviewCall(candidate: CandidateListItem): boolean {
+  return (
+    (candidate.status === "moved_to_campus" || candidate.status === "testing_complete") &&
+    candidate.test_a_score != null &&
+    candidate.test_b_score != null
+  );
+}
+
 /** Rank is not persisted by the backend — computed per rendered list, sorted by composite score desc (nulls last). */
 export function withRank<T extends { preference_match_score: number | null }>(
   items: T[],

@@ -139,7 +139,7 @@ export default function OverviewPage() {
                 View All Applications →
               </Link>
             </div>
-            <FunnelBars stages={stages} showDropOff={false} />
+            <FunnelBars stages={stages} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
