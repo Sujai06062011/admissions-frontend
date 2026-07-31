@@ -35,7 +35,8 @@ type StageTabKey = "screening" | "campus_test" | "campus_interview" | "final_int
 type PendingAction =
   | { type: "move_to_campus"; candidate: CandidateWithMatch }
   | { type: "override"; candidate: CandidateWithMatch }
-  | { type: "move_to_final"; candidate: CandidateWithMatch };
+  | { type: "move_to_final"; candidate: CandidateWithMatch }
+  | { type: "mark_offered"; candidate: CandidateWithMatch };
 
 function initials(name: string | null): string {
   if (!name) return "?";
@@ -257,8 +258,25 @@ export default function ApplicationsPage() {
     onError: (err: Error) => setActionError(err.message),
   });
 
+  const markOfferedMutation = useMutation({
+    mutationFn: (applicationId: string) =>
+      createAdminDecision({
+        application_id: applicationId,
+        stage: "stage4_offer",
+        decision: "approved",
+      }),
+    onSuccess: () => {
+      invalidateAll();
+      setPendingAction(null);
+    },
+    onError: (err: Error) => setActionError(err.message),
+  });
+
   const actionLoading =
-    moveToCampusMutation.isPending || overrideMutation.isPending || moveToFinalMutation.isPending;
+    moveToCampusMutation.isPending ||
+    overrideMutation.isPending ||
+    moveToFinalMutation.isPending ||
+    markOfferedMutation.isPending;
 
   const tabs: StageTabDef[] = [
     { key: "screening", label: "Screening", count: counts.screening },
@@ -297,6 +315,12 @@ export default function ApplicationsPage() {
           title: "Move to Final Interview?",
           description: `${name} will be called for the final interview. This writes both the admin decision and the interview-call record.`,
           confirmLabel: "Move to Final Interview",
+        };
+      case "mark_offered":
+        return {
+          title: "Mark as Offered?",
+          description: `${name} will be marked as offered and move to the Offered stage.`,
+          confirmLabel: "Mark as Offered",
         };
     }
   }
@@ -379,12 +403,13 @@ export default function ApplicationsPage() {
         }
         if (c.stage === "final_interview") {
           return (
-            <span
-              className="text-[12px] text-text-muted cursor-not-allowed"
-              title="No backend endpoint writes status=offered yet."
+            <button
+              type="button"
+              onClick={() => setPendingAction({ type: "mark_offered", candidate: c })}
+              className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
             >
               Mark as Offered
-            </span>
+            </button>
           );
         }
         return <span className="text-text-muted">—</span>;
@@ -518,12 +543,13 @@ export default function ApplicationsPage() {
         }
         if (tab === "final_interview") {
           return (
-            <span
-              className="text-[12px] text-text-muted cursor-not-allowed"
-              title="No backend endpoint writes status=offered yet."
+            <button
+              type="button"
+              onClick={() => setPendingAction({ type: "mark_offered", candidate: c })}
+              className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
             >
               Mark as Offered
-            </span>
+            </button>
           );
         }
         return <span className="text-text-muted">—</span>;
@@ -660,6 +686,7 @@ export default function ApplicationsPage() {
             if (pendingAction.type === "override")
               overrideMutation.mutate({ applicationId: id, notes: overrideReason.trim() });
             if (pendingAction.type === "move_to_final") moveToFinalMutation.mutate(id);
+            if (pendingAction.type === "mark_offered") markOfferedMutation.mutate(id);
           }}
         >
           {pendingAction.type === "override" && (

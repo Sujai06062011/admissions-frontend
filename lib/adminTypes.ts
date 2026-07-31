@@ -132,7 +132,10 @@ export interface PreferenceMatchResultResponse {
   computed_at: string | null;
 }
 
-export type DecisionStage = "stage2_move_to_campus" | "stage3_call_for_interview";
+export type DecisionStage =
+  | "stage2_move_to_campus"
+  | "stage3_call_for_interview"
+  | "stage4_offer";
 export type DecisionOutcome = "approved" | "rejected" | "manual_override";
 
 export interface AdminDecisionResponse {

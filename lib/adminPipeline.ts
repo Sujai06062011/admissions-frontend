@@ -152,13 +152,21 @@ export function computeScoreBands(
   return map;
 }
 
-export function searchCandidates<T extends { applicant_name: string | null }>(
-  items: T[],
-  query: string,
-): T[] {
+export function searchCandidates<
+  T extends {
+    applicant_name: string | null;
+    application_id?: string;
+    application_number?: string | null;
+  },
+>(items: T[], query: string): T[] {
   const trimmed = query.trim().toLowerCase();
   if (!trimmed) return items;
-  return items.filter((item) => (item.applicant_name ?? "").toLowerCase().includes(trimmed));
+  return items.filter((item) => {
+    const name = (item.applicant_name ?? "").toLowerCase();
+    const number = (item.application_number ?? "").toLowerCase();
+    const id = (item.application_id ?? "").toLowerCase();
+    return name.includes(trimmed) || number.includes(trimmed) || id.includes(trimmed);
+  });
 }
 
 export function applicationNumberOf(application: Application | undefined | null): string {
