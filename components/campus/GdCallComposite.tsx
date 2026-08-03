@@ -18,12 +18,12 @@ type Props = {
   onPageChange?: (page: CallCompositePage) => void;
 };
 
+/** Candidate controls only — no Hold / Captions / RTT / Phone / View menu. */
 const CANDIDATE_CALL_CONTROLS = {
   cameraButton: true,
   microphoneButton: true,
   screenShareButton: false,
   peopleButton: true,
-  // Hide the overflow menu (Hold, Captions, RTT, Phone, View, etc.)
   moreButton: false,
   holdButton: false,
   captionsButton: false,
@@ -63,14 +63,23 @@ export function GdCallComposite({
       const emit = () => onPageChange?.(adapter.getState().page);
       emit();
       adapter.onStateChange((state) => onPageChange?.(state.page));
+
+      // Skip ACS "Start call" / device setup screen — candidates auto-join the meeting.
+      // Host Start (topic + timer) is a separate Admit admin action, not this button.
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      } catch {
+        // Permissions may still be granted later from in-call controls.
+      }
+      adapter.joinCall({ microphoneOn: true, cameraOn: true });
+
       return adapter;
     },
     [onPageChange],
   );
 
-  const beforeDispose = useCallback(async (adapter: CallAdapter) => {
-    // no-op — hook cleans up; keep signature for dispose ordering
-    void adapter;
+  const beforeDispose = useCallback(async (_adapter: CallAdapter) => {
+    void _adapter;
   }, []);
 
   const adapter = useAzureCommunicationCallAdapter(adapterArgs, afterCreate, beforeDispose);
@@ -78,14 +87,13 @@ export function GdCallComposite({
   if (!adapter) {
     return (
       <div className="rounded-[14px] border border-border bg-surface px-4 py-8 text-center text-[13px] text-text-muted">
-        Preparing camera and microphone…
+        Joining the discussion…
       </div>
     );
   }
 
   return (
     <div className="gd-call-composite relative h-[min(72vh,640px)] w-full overflow-visible rounded-[14px] border border-border bg-[#111]">
-      {/* Compliance banner must stay clickable — do not clip with overflow:hidden */}
       <style>{`
         .gd-call-composite [data-ui-id="compliance-banner"],
         .gd-call-composite [class*="complianceBanner"],

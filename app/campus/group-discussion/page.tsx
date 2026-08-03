@@ -25,8 +25,7 @@ function timerLabel(endsAt: string | null | undefined, nowMs: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-/** Topic/timer only while the candidate is actually in the meeting (or lobby). */
-function isInLiveCall(page: CallCompositePage | null): boolean {
+function isConnectedToMeeting(page: CallCompositePage | null): boolean {
   return page === "call" || page === "lobby";
 }
 
@@ -50,15 +49,18 @@ function GdContent({ applicationId }: { applicationId: string }) {
     queryKey: ["gd-session-state", sessionId, applicationId],
     queryFn: () => getGdSessionState(sessionId!, applicationId),
     enabled: Boolean(sessionId),
-    refetchInterval: 4000,
+    refetchInterval: 3000,
   });
 
   const state = stateQuery.data;
-  const topic = state?.topic ?? joinQuery.data?.topic ?? null;
-  const hostStarted = Boolean(state?.started_at);
+  const topic = state?.topic ?? null;
+  const hostStarted = Boolean(state?.started_at) && state?.status === "live";
   const completed =
     state?.status === "completed" || state?.status === "scored" || Boolean(state?.ended_at);
-  const showTopicTimer = hostStarted && Boolean(topic) && isInLiveCall(callPage);
+
+  // Topic + timer only after moderator Host Start, and only while candidate is in the meeting.
+  const showTopicTimer =
+    hostStarted && Boolean(topic) && isConnectedToMeeting(callPage);
   const endsAt = showTopicTimer ? (state?.ends_at ?? null) : null;
 
   useEffect(() => {
@@ -122,19 +124,17 @@ function GdContent({ applicationId }: { applicationId: string }) {
               </>
             ) : callPage === "leftCall" || callPage === "leaving" ? (
               <div className="text-[13.5px] text-text-muted leading-relaxed">
-                You left the call. Use <span className="font-semibold text-text">Re-join call</span>{" "}
-                below if that was a mistake. The discussion timer pauses on this screen until you
-                rejoin.
+                You left the call. Re-join below if that was a mistake.
               </div>
-            ) : hostStarted ? (
+            ) : isConnectedToMeeting(callPage) && !hostStarted ? (
               <div className="text-[13.5px] text-text-muted leading-relaxed">
-                The host has started. Join the call below — the topic and timer appear once you are
-                in the meeting.
+                You&apos;re in the room. Waiting for the <span className="font-semibold text-text">moderator</span>{" "}
+                to start the discussion — the topic and timer will appear then.
               </div>
             ) : (
               <div className="text-[13.5px] text-text-muted leading-relaxed">
-                Waiting for the host to start the discussion. The topic will appear here when it
-                begins and you are in the call.
+                Join below to enter the discussion room. The topic stays hidden until the moderator
+                starts the session.
               </div>
             )}
           </div>
@@ -152,7 +152,7 @@ function GdContent({ applicationId }: { applicationId: string }) {
               Join discussion
             </button>
           ) : joinQuery.isLoading ? (
-            <div className="text-sm text-text-muted">Connecting…</div>
+            <div className="text-sm text-text-muted">Joining…</div>
           ) : joinQuery.isError ? (
             <div className="rounded-[11px] border-[1.5px] border-brick bg-brick-soft px-4 py-3 text-[13px] text-brick font-medium">
               {joinQuery.error instanceof ApiError
