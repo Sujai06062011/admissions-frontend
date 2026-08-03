@@ -437,3 +437,69 @@ export function updatePrompt(
 export function deletePrompt(promptId: string): Promise<void> {
   return adminFetch<void>(`/prompts/${promptId}`, { method: "DELETE" });
 }
+
+// --- Group Discussion (moderator / host) ---
+
+export interface GdParticipantAdmin {
+  id: string;
+  application_id: string;
+  applicant_name: string | null;
+  applicant_email: string | null;
+  application_number: string | null;
+  invite_status: string | null;
+}
+
+export interface GdSessionAdmin {
+  id: string;
+  program_id: string;
+  label: string | null;
+  target_size: number;
+  scheduled_at: string | null;
+  duration_minutes: number;
+  status: string;
+  track: string;
+  topic: string | null;
+  professor_email: string | null;
+  professor_name: string | null;
+  join_url: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  participants: GdParticipantAdmin[];
+}
+
+export interface GdStartResponse {
+  session_id: string;
+  status: string;
+  started_at: string;
+  ends_at: string;
+  topic: string | null;
+}
+
+export interface GdEndResponse {
+  session_id: string;
+  status: string;
+  ended_at: string;
+}
+
+export function listGdSessions(programId: string): Promise<GdSessionAdmin[]> {
+  return adminFetch<GdSessionAdmin[]>(
+    `/admin/group-discussion/sessions?program_id=${encodeURIComponent(programId)}`,
+  );
+}
+
+export function getGdSession(sessionId: string): Promise<GdSessionAdmin> {
+  return adminFetch<GdSessionAdmin>(`/admin/group-discussion/sessions/${sessionId}`);
+}
+
+export function startGdSession(sessionId: string): Promise<GdStartResponse> {
+  return adminFetch<GdStartResponse>(`/admin/group-discussion/sessions/${sessionId}/start`, {
+    method: "POST",
+  });
+}
+
+export function endGdSession(sessionId: string): Promise<GdEndResponse> {
+  return adminFetch<GdEndResponse>(`/admin/group-discussion/sessions/${sessionId}/end`, {
+    method: "POST",
+    body: "{}",
+  });
+}

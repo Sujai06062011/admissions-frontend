@@ -39,6 +39,7 @@ const CONFIG_ITEMS: NavItem[] = [
 
 const OUTREACH_ITEMS: NavItem[] = [
   { href: "/admin/interview-calls", label: "Interview Calls", icon: PhoneIcon },
+  { href: "/admin/group-discussion", label: "Group Discussion", icon: UsersIcon },
 ];
 
 export function AdminSidebar() {

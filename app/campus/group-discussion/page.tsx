@@ -142,9 +142,14 @@ function GdContent({ applicationId }: { applicationId: string }) {
           {!joined ? (
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 setJoinError(null);
                 setCallPage(null);
+                try {
+                  await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                } catch {
+                  // Still allow join; in-call controls can request again.
+                }
                 setJoined(true);
               }}
               className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark cursor-pointer"

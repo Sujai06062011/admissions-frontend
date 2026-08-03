@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 import {
   CallComposite,
@@ -18,7 +18,7 @@ type Props = {
   onPageChange?: (page: CallCompositePage) => void;
 };
 
-/** Candidate controls only — no Hold / Captions / RTT / Phone / View menu. */
+/** Candidate controls — keep Raise hand; hide Hold/Captions/RTT/Phone/View. */
 const CANDIDATE_CALL_CONTROLS = {
   cameraButton: true,
   microphoneButton: true,
@@ -30,11 +30,23 @@ const CANDIDATE_CALL_CONTROLS = {
   realTimeTextButton: false,
   teamsMeetingPhoneCallButton: false,
   galleryControlsButton: false,
-  raiseHandButton: false,
+  raiseHandButton: true,
   reactionButton: false,
   devicesButton: true,
   dtmfDialerButton: false,
 } as const;
+
+function forceJoin(adapter: CallAdapter) {
+  try {
+    adapter.joinCall({ microphoneOn: true, cameraOn: true });
+  } catch {
+    try {
+      adapter.joinCall(true);
+    } catch {
+      // Composite may already be joining.
+    }
+  }
+}
 
 export function GdCallComposite({
   acsUserId,
@@ -43,6 +55,9 @@ export function GdCallComposite({
   displayName,
   onPageChange,
 }: Props) {
+  const [page, setPage] = useState<CallCompositePage | null>(null);
+  const pageRef = useRef<CallCompositePage | null>(null);
+
   const credential = useMemo(
     () => new AzureCommunicationTokenCredential(acsToken),
     [acsToken],
@@ -58,42 +73,49 @@ export function GdCallComposite({
     [acsUserId, credential, displayName, teamsJoinUrl],
   );
 
-  const afterCreate = useCallback(
-    async (adapter: CallAdapter) => {
-      const emit = () => onPageChange?.(adapter.getState().page);
-      emit();
-      adapter.onStateChange((state) => onPageChange?.(state.page));
-
-      // Skip ACS "Start call" / device setup screen — candidates auto-join the meeting.
-      // Host Start (topic + timer) is a separate Admit admin action, not this button.
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      } catch {
-        // Permissions may still be granted later from in-call controls.
-      }
-      adapter.joinCall({ microphoneOn: true, cameraOn: true });
-
-      return adapter;
-    },
-    [onPageChange],
-  );
-
-  const beforeDispose = useCallback(async (_adapter: CallAdapter) => {
-    void _adapter;
+  const afterCreate = useCallback(async (adapter: CallAdapter) => {
+    // Skip ACS configuration / "Start call" — join as soon as the adapter exists.
+    forceJoin(adapter);
+    return adapter;
   }, []);
 
-  const adapter = useAzureCommunicationCallAdapter(adapterArgs, afterCreate, beforeDispose);
+  const adapter = useAzureCommunicationCallAdapter(adapterArgs, afterCreate);
 
-  if (!adapter) {
-    return (
-      <div className="rounded-[14px] border border-border bg-surface px-4 py-8 text-center text-[13px] text-text-muted">
-        Joining the discussion…
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!adapter) return;
+
+    const onState = (state: { page: CallCompositePage }) => {
+      pageRef.current = state.page;
+      setPage(state.page);
+      onPageChange?.(state.page);
+    };
+
+    onState(adapter.getState());
+    adapter.onStateChange(onState);
+    return () => adapter.offStateChange(onState);
+  }, [adapter, onPageChange]);
+
+  // Keep retrying join until we leave the configuration screen.
+  useEffect(() => {
+    if (!adapter) return;
+
+    forceJoin(adapter);
+    const id = window.setInterval(() => {
+      if (pageRef.current === "configuration" || pageRef.current === null) {
+        forceJoin(adapter);
+      }
+    }, 400);
+
+    return () => window.clearInterval(id);
+  }, [adapter]);
+
+  const stillJoining = !adapter || page === null || page === "configuration";
 
   return (
-    <div className="gd-call-composite relative h-[min(72vh,640px)] w-full overflow-visible rounded-[14px] border border-border bg-[#111]">
+    <div
+      className="gd-call-composite relative h-[min(72vh,640px)] w-full overflow-hidden rounded-[14px] border border-border bg-[#111]"
+      data-joining={stillJoining ? "true" : "false"}
+    >
       <style>{`
         .gd-call-composite [data-ui-id="compliance-banner"],
         .gd-call-composite [class*="complianceBanner"],
@@ -108,16 +130,34 @@ export function GdCallComposite({
           min-width: 2rem;
           min-height: 2rem;
         }
+        /* Hide ACS setup / Start call UI; we auto-join instead. */
+        .gd-call-composite[data-joining="true"] [data-ui-id="call-composite-configuration-page"],
+        .gd-call-composite[data-joining="true"] [class*="configurationPage"],
+        .gd-call-composite[data-joining="true"] [class*="ConfigurationPage"] {
+          visibility: hidden !important;
+        }
       `}</style>
-      <CallComposite
-        adapter={adapter}
-        formFactor="desktop"
-        options={{
-          callControls: { ...CANDIDATE_CALL_CONTROLS },
-          surveyOptions: { disableSurvey: true },
-          errorBar: true,
-        }}
-      />
+
+      {stillJoining && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface text-[13px] text-text-muted">
+          Joining the discussion room…
+        </div>
+      )}
+
+      {adapter && (
+        <div className="h-full w-full" aria-hidden={stillJoining}>
+          <CallComposite
+            adapter={adapter}
+            formFactor="desktop"
+            options={{
+              callControls: { ...CANDIDATE_CALL_CONTROLS },
+              surveyOptions: { disableSurvey: true },
+              errorBar: true,
+              joinCallOptions: { microphoneCheck: "skip" },
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
