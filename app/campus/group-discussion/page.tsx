@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { BrandHeader } from "@/components/BrandHeader";
 import { CampusGuard } from "@/components/campus/CampusGuard";
 import { GdCallClient } from "@/components/campus/GdCallClient";
@@ -14,9 +14,9 @@ function formatWhen(iso: string | null | undefined) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function timerLabel(endsAt: string | null | undefined) {
+function timerLabel(endsAt: string | null | undefined, nowMs: number) {
   if (!endsAt) return null;
-  const ms = new Date(endsAt).getTime() - Date.now();
+  const ms = new Date(endsAt).getTime() - nowMs;
   if (ms <= 0) return "00:00";
   const totalSec = Math.floor(ms / 1000);
   const m = Math.floor(totalSec / 60);
@@ -30,6 +30,7 @@ function GdContent({ applicationId }: { applicationId: string }) {
   const [joined, setJoined] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [callState, setCallState] = useState("Idle");
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const joinQuery = useQuery({
     queryKey: ["gd-acs-join", sessionId, applicationId],
@@ -45,6 +46,14 @@ function GdContent({ applicationId }: { applicationId: string }) {
     enabled: Boolean(sessionId),
     refetchInterval: 4000,
   });
+
+  const endsAt = stateQuery.data?.ends_at ?? null;
+  useEffect(() => {
+    if (!endsAt) return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [endsAt]);
 
   if (!sessionId) {
     return (
@@ -98,7 +107,9 @@ function GdContent({ applicationId }: { applicationId: string }) {
                 </div>
                 <div className="text-[13px] text-text-muted">
                   Time remaining:{" "}
-                  <span className="font-semibold text-text">{timerLabel(state?.ends_at) ?? "—"}</span>
+                  <span className="font-semibold text-text">
+                    {timerLabel(state?.ends_at, nowMs) ?? "—"}
+                  </span>
                 </div>
               </>
             ) : (
