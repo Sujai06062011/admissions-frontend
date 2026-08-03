@@ -36,17 +36,13 @@ const CANDIDATE_CALL_CONTROLS = {
   dtmfDialerButton: false,
 } as const;
 
-function forceJoin(adapter: CallAdapter) {
-  try {
-    adapter.joinCall({ microphoneOn: true, cameraOn: true });
-  } catch {
-    try {
-      adapter.joinCall(true);
-    } catch {
-      // Composite may already be joining.
-    }
-  }
-}
+const BUSY_PAGES = new Set<CallCompositePage>([
+  "call",
+  "lobby",
+  "transferring",
+  "hold",
+  "leaving",
+]);
 
 export function GdCallComposite({
   acsUserId,
@@ -56,7 +52,8 @@ export function GdCallComposite({
   onPageChange,
 }: Props) {
   const [page, setPage] = useState<CallCompositePage | null>(null);
-  const pageRef = useRef<CallCompositePage | null>(null);
+  /** Track which adapter instance we already asked to join — never spam joinCall. */
+  const joinedAdapterRef = useRef<CallAdapter | null>(null);
 
   const credential = useMemo(
     () => new AzureCommunicationTokenCredential(acsToken),
@@ -73,11 +70,33 @@ export function GdCallComposite({
     [acsUserId, credential, displayName, teamsJoinUrl],
   );
 
-  const afterCreate = useCallback(async (adapter: CallAdapter) => {
-    // Skip ACS configuration / "Start call" — join as soon as the adapter exists.
-    forceJoin(adapter);
-    return adapter;
+  const joinOnce = useCallback(async (adapter: CallAdapter) => {
+    if (joinedAdapterRef.current === adapter) return;
+    const pageNow = adapter.getState().page;
+    if (BUSY_PAGES.has(pageNow)) {
+      joinedAdapterRef.current = adapter;
+      return;
+    }
+    joinedAdapterRef.current = adapter;
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    } catch {
+      // Permissions may be granted from in-call controls.
+    }
+    try {
+      adapter.joinCall({ microphoneOn: true, cameraOn: true });
+    } catch {
+      // Already joining.
+    }
   }, []);
+
+  const afterCreate = useCallback(
+    async (adapter: CallAdapter) => {
+      await joinOnce(adapter);
+      return adapter;
+    },
+    [joinOnce],
+  );
 
   const adapter = useAzureCommunicationCallAdapter(adapterArgs, afterCreate);
 
@@ -85,7 +104,6 @@ export function GdCallComposite({
     if (!adapter) return;
 
     const onState = (state: { page: CallCompositePage }) => {
-      pageRef.current = state.page;
       setPage(state.page);
       onPageChange?.(state.page);
     };
@@ -95,21 +113,15 @@ export function GdCallComposite({
     return () => adapter.offStateChange(onState);
   }, [adapter, onPageChange]);
 
-  // Keep retrying join until we leave the configuration screen.
-  useEffect(() => {
+  const rejoin = useCallback(() => {
     if (!adapter) return;
-
-    forceJoin(adapter);
-    const id = window.setInterval(() => {
-      if (pageRef.current === "configuration" || pageRef.current === null) {
-        forceJoin(adapter);
-      }
-    }, 400);
-
-    return () => window.clearInterval(id);
-  }, [adapter]);
+    // Allow a fresh joinCall after user left.
+    joinedAdapterRef.current = null;
+    void joinOnce(adapter);
+  }, [adapter, joinOnce]);
 
   const stillJoining = !adapter || page === null || page === "configuration";
+  const leftCall = page === "leftCall";
 
   return (
     <div
@@ -130,7 +142,6 @@ export function GdCallComposite({
           min-width: 2rem;
           min-height: 2rem;
         }
-        /* Hide ACS setup / Start call UI; we auto-join instead. */
         .gd-call-composite[data-joining="true"] [data-ui-id="call-composite-configuration-page"],
         .gd-call-composite[data-joining="true"] [class*="configurationPage"],
         .gd-call-composite[data-joining="true"] [class*="ConfigurationPage"] {
@@ -144,8 +155,21 @@ export function GdCallComposite({
         </div>
       )}
 
+      {leftCall && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-surface px-4 text-center">
+          <p className="text-[13.5px] text-text-muted">You left the call.</p>
+          <button
+            type="button"
+            onClick={rejoin}
+            className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark cursor-pointer"
+          >
+            Re-join
+          </button>
+        </div>
+      )}
+
       {adapter && (
-        <div className="h-full w-full" aria-hidden={stillJoining}>
+        <div className="h-full w-full" aria-hidden={stillJoining || leftCall}>
           <CallComposite
             adapter={adapter}
             formFactor="desktop"
