@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Suspense, useEffect, useState } from "react";
+import type { CallCompositePage } from "@azure/communication-react";
 import { BrandHeader } from "@/components/BrandHeader";
 import { CampusGuard } from "@/components/campus/CampusGuard";
 import { GdCallClient } from "@/components/campus/GdCallClient";
@@ -24,12 +25,18 @@ function timerLabel(endsAt: string | null | undefined, nowMs: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/** Topic/timer only while the candidate is actually in the meeting (or lobby). */
+function isInLiveCall(page: CallCompositePage | null): boolean {
+  return page === "call" || page === "lobby";
+}
+
 function GdContent({ applicationId }: { applicationId: string }) {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session");
   const [joined, setJoined] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [callPage, setCallPage] = useState<CallCompositePage | null>(null);
 
   const joinQuery = useQuery({
     queryKey: ["gd-acs-join", sessionId, applicationId],
@@ -46,7 +53,14 @@ function GdContent({ applicationId }: { applicationId: string }) {
     refetchInterval: 4000,
   });
 
-  const endsAt = stateQuery.data?.ends_at ?? null;
+  const state = stateQuery.data;
+  const topic = state?.topic ?? joinQuery.data?.topic ?? null;
+  const hostStarted = Boolean(state?.started_at);
+  const completed =
+    state?.status === "completed" || state?.status === "scored" || Boolean(state?.ended_at);
+  const showTopicTimer = hostStarted && Boolean(topic) && isInLiveCall(callPage);
+  const endsAt = showTopicTimer ? (state?.ends_at ?? null) : null;
+
   useEffect(() => {
     if (!endsAt) return;
     setNowMs(Date.now());
@@ -65,11 +79,6 @@ function GdContent({ applicationId }: { applicationId: string }) {
       </div>
     );
   }
-
-  const state = stateQuery.data;
-  const topic = state?.topic ?? joinQuery.data?.topic ?? null;
-  const started = Boolean(state?.started_at);
-  const completed = state?.status === "completed" || state?.status === "scored" || Boolean(state?.ended_at);
 
   return (
     <div className="max-w-[920px] mx-auto px-6 pt-14 pb-20">
@@ -96,7 +105,7 @@ function GdContent({ applicationId }: { applicationId: string }) {
       ) : (
         <>
           <div className="rounded-[14px] border border-border bg-surface px-[24px] py-[22px] mb-4">
-            {started && topic ? (
+            {showTopicTimer ? (
               <>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">
                   Topic
@@ -107,13 +116,25 @@ function GdContent({ applicationId }: { applicationId: string }) {
                 <div className="text-[13px] text-text-muted">
                   Time remaining:{" "}
                   <span className="font-semibold text-text">
-                    {timerLabel(state?.ends_at, nowMs) ?? "—"}
+                    {timerLabel(endsAt, nowMs) ?? "—"}
                   </span>
                 </div>
               </>
+            ) : callPage === "leftCall" || callPage === "leaving" ? (
+              <div className="text-[13.5px] text-text-muted leading-relaxed">
+                You left the call. Use <span className="font-semibold text-text">Re-join call</span>{" "}
+                below if that was a mistake. The discussion timer pauses on this screen until you
+                rejoin.
+              </div>
+            ) : hostStarted ? (
+              <div className="text-[13.5px] text-text-muted leading-relaxed">
+                The host has started. Join the call below — the topic and timer appear once you are
+                in the meeting.
+              </div>
             ) : (
               <div className="text-[13.5px] text-text-muted leading-relaxed">
-                Waiting for the host to start the discussion. The topic will appear here when it begins.
+                Waiting for the host to start the discussion. The topic will appear here when it
+                begins and you are in the call.
               </div>
             )}
           </div>
@@ -123,6 +144,7 @@ function GdContent({ applicationId }: { applicationId: string }) {
               type="button"
               onClick={() => {
                 setJoinError(null);
+                setCallPage(null);
                 setJoined(true);
               }}
               className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark cursor-pointer"
@@ -153,6 +175,7 @@ function GdContent({ applicationId }: { applicationId: string }) {
               acsToken={joinQuery.data.acs_token}
               teamsJoinUrl={joinQuery.data.teams_join_url}
               displayName={joinQuery.data.display_name}
+              onPageChange={setCallPage}
             />
           ) : null}
         </>

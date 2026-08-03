@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { CallCompositePage } from "@azure/communication-react";
 
 const GdCallComposite = dynamic(
   () => import("./GdCallComposite").then((m) => m.GdCallComposite),
@@ -19,6 +20,7 @@ type Props = {
   acsToken: string;
   teamsJoinUrl: string;
   displayName: string;
+  onPageChange?: (page: CallCompositePage) => void;
 };
 
 /** Client-only ACS Call Composite wrapper (no SSR — Calling SDK needs the browser). */
