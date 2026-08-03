@@ -29,7 +29,6 @@ function GdContent({ applicationId }: { applicationId: string }) {
   const sessionId = searchParams.get("session");
   const [joined, setJoined] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [callState, setCallState] = useState("Idle");
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const joinQuery = useQuery({
@@ -73,7 +72,7 @@ function GdContent({ applicationId }: { applicationId: string }) {
   const completed = state?.status === "completed" || state?.status === "scored" || Boolean(state?.ended_at);
 
   return (
-    <div className="max-w-[640px] mx-auto px-6 pt-14 pb-20">
+    <div className="max-w-[920px] mx-auto px-6 pt-14 pb-20">
       <div className="flex items-start justify-between gap-4 mb-6">
         <BrandHeader />
         <Link
@@ -149,15 +148,12 @@ function GdContent({ applicationId }: { applicationId: string }) {
               </button>
             </div>
           ) : joinQuery.data ? (
-            <>
-              <GdCallClient
-                acsToken={joinQuery.data.acs_token}
-                teamsJoinUrl={joinQuery.data.teams_join_url}
-                displayName={joinQuery.data.display_name}
-                onStateChange={setCallState}
-              />
-              <p className="mt-3 text-[12.5px] text-text-muted">Media: {callState}</p>
-            </>
+            <GdCallClient
+              acsUserId={joinQuery.data.acs_user_id}
+              acsToken={joinQuery.data.acs_token}
+              teamsJoinUrl={joinQuery.data.teams_join_url}
+              displayName={joinQuery.data.display_name}
+            />
           ) : null}
         </>
       )}
