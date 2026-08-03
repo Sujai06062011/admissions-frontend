@@ -150,6 +150,70 @@ function PortalContent({ applicationId }: { applicationId: string }) {
               </Link>
             )}
           </div>
+
+          {/* Group Discussion — shown only when assigned */}
+          {data.group_discussion?.assigned && (
+            <div className="bg-surface border border-border rounded-[14px] px-[24px] py-[22px]">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-serif text-[16.5px] font-semibold">Group Discussion</div>
+                {data.group_discussion.completed ? (
+                  <StatusPill tone="done">Completed</StatusPill>
+                ) : data.group_discussion.status === "live" ? (
+                  <StatusPill tone="active">In progress</StatusPill>
+                ) : data.group_discussion.join_enabled ? (
+                  <StatusPill tone="active">Join open</StatusPill>
+                ) : (
+                  <StatusPill tone="muted">Scheduled</StatusPill>
+                )}
+              </div>
+              <p className="text-[13px] text-text-muted mb-3 leading-relaxed">
+                {data.group_discussion.track === "manual"
+                  ? "You have been scheduled for an in-person group discussion on campus."
+                  : "Join online from this portal. The discussion topic is shown only after the host starts the session."}
+              </p>
+              {data.group_discussion.scheduled_at && (
+                <p className="text-[13px] text-text mb-4">
+                  <span className="text-text-muted">Scheduled: </span>
+                  {new Date(data.group_discussion.scheduled_at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                  {data.group_discussion.duration_minutes
+                    ? ` · ${data.group_discussion.duration_minutes} min`
+                    : ""}
+                </p>
+              )}
+              {data.group_discussion.completed ? (
+                <div className="text-[13px] font-semibold text-forest">
+                  Your group discussion has ended.
+                </div>
+              ) : data.group_discussion.track === "manual" ? (
+                <div className="text-[13px] text-text-muted italic">
+                  Please attend in person at the scheduled time. Details will be shared by the college.
+                </div>
+              ) : data.group_discussion.join_enabled && data.group_discussion.session_id ? (
+                <Link
+                  href={`/campus/group-discussion?session=${data.group_discussion.session_id}`}
+                  className="inline-block px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark"
+                >
+                  Join discussion →
+                </Link>
+              ) : (
+                <div className="text-[13px] text-text-muted italic">
+                  Join opens{" "}
+                  {data.group_discussion.join_opens_minutes_before ?? 10} minutes before the
+                  scheduled time
+                  {data.group_discussion.join_opens_at
+                    ? ` (${new Date(data.group_discussion.join_opens_at).toLocaleString(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })})`
+                    : ""}
+                  .
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

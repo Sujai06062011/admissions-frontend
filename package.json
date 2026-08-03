@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@azure/communication-calling": "^1.43.1",
+    "@azure/communication-common": "^2.4.2",
     "@tanstack/react-query": "^5.101.2",
     "next": "16.2.10",
     "react": "19.2.4",

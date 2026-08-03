@@ -153,4 +153,69 @@ export async function campusCheckIn(applicationId: string, deviceId?: string): P
   }
 }
 
+export interface GdAcsJoinResponse {
+  session_id: string;
+  role: "candidate" | "host";
+  display_name: string;
+  acs_user_id: string;
+  acs_token: string;
+  acs_token_expires_on: string;
+  teams_meeting_id: string | null;
+  teams_join_url: string;
+  status: string;
+  scheduled_at: string | null;
+  join_opens_at: string | null;
+  started_at: string | null;
+  ends_at: string | null;
+  topic: string | null;
+  duration_minutes: number;
+}
+
+export interface GdSessionStateResponse {
+  session_id: string;
+  status: string;
+  scheduled_at: string | null;
+  join_opens_at: string | null;
+  join_enabled: boolean;
+  started_at: string | null;
+  ends_at: string | null;
+  ended_at: string | null;
+  topic: string | null;
+  duration_minutes: number;
+  track: string;
+}
+
+export async function joinGdSessionAcs(
+  sessionId: string,
+  applicationId: string,
+  displayName?: string,
+): Promise<GdAcsJoinResponse> {
+  const response = await fetch(`${API_URL}/campus/group-discussion/sessions/${sessionId}/acs-join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      application_id: applicationId,
+      display_name: displayName ?? null,
+    }),
+  });
+  if (!response.ok) {
+    throw new ApiError(await parseErrorMessage(response), response.status);
+  }
+  return response.json();
+}
+
+export async function getGdSessionState(
+  sessionId: string,
+  applicationId: string,
+): Promise<GdSessionStateResponse> {
+  const response = await fetch(
+    `${API_URL}/campus/group-discussion/sessions/${sessionId}/state?application_id=${applicationId}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) {
+    throw new ApiError(await parseErrorMessage(response), response.status);
+  }
+  return response.json();
+}
+
 export { ApiError };

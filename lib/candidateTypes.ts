@@ -15,6 +15,24 @@ export interface CandidateTestBStatus {
   recorded_at: string | null;
 }
 
+export interface CandidateGdStatus {
+  assigned: boolean;
+  session_id: string | null;
+  track: string | null;
+  label: string | null;
+  scheduled_at: string | null;
+  duration_minutes: number | null;
+  status: string | null;
+  join_opens_at: string | null;
+  join_opens_minutes_before: number | null;
+  join_enabled: boolean;
+  started_at: string | null;
+  ends_at: string | null;
+  ended_at: string | null;
+  topic: string | null;
+  completed: boolean;
+}
+
 export interface CandidateStatus {
   application_id: string;
   program_id: string;
@@ -24,6 +42,7 @@ export interface CandidateStatus {
   application_number: string | null;
   test_a: CandidateTestAStatus;
   test_b: CandidateTestBStatus;
+  group_discussion?: CandidateGdStatus | null;
 }
 
 export type TestAAnswerType = "single" | "multi";
