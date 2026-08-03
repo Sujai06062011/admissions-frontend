@@ -120,8 +120,19 @@ export function GdCallComposite({
     void joinOnce(adapter);
   }, [adapter, joinOnce]);
 
+  const [consentVisible, setConsentVisible] = useState(false);
   const stillJoining = !adapter || page === null || page === "configuration";
   const leftCall = page === "leftCall";
+  const inCall = page === "call" || page === "lobby";
+
+  // ACS recording toast stays forever while recording is on (host dismiss does not clear it).
+  // We hide ACS notifications and show a short consent note instead.
+  useEffect(() => {
+    if (!inCall) return;
+    setConsentVisible(true);
+    const t = window.setTimeout(() => setConsentVisible(false), 8000);
+    return () => window.clearTimeout(t);
+  }, [inCall]);
 
   return (
     <div
@@ -129,19 +140,6 @@ export function GdCallComposite({
       data-joining={stillJoining ? "true" : "false"}
     >
       <style>{`
-        .gd-call-composite [data-ui-id="compliance-banner"],
-        .gd-call-composite [class*="complianceBanner"],
-        .gd-call-composite [class*="ComplianceBanner"] {
-          z-index: 40 !important;
-          pointer-events: auto !important;
-        }
-        .gd-call-composite [data-ui-id="compliance-banner"] button,
-        .gd-call-composite [class*="complianceBanner"] button,
-        .gd-call-composite [class*="ComplianceBanner"] button {
-          display: inline-flex !important;
-          min-width: 2rem;
-          min-height: 2rem;
-        }
         .gd-call-composite[data-joining="true"] [data-ui-id="call-composite-configuration-page"],
         .gd-call-composite[data-joining="true"] [class*="configurationPage"],
         .gd-call-composite[data-joining="true"] [class*="ConfigurationPage"] {
@@ -168,6 +166,24 @@ export function GdCallComposite({
         </div>
       )}
 
+      {consentVisible && inCall && !leftCall && (
+        <div className="absolute top-3 left-1/2 z-30 w-[min(22rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-[10px] border border-border bg-surface px-3 py-2.5 shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[12.5px] text-text leading-snug">
+              This discussion is recorded and transcribed for admissions review.
+            </p>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => setConsentVisible(false)}
+              className="shrink-0 text-[16px] leading-none text-text-muted hover:text-text cursor-pointer px-1"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {adapter && (
         <div className="h-full w-full" aria-hidden={stillJoining || leftCall}>
           <CallComposite
@@ -178,6 +194,7 @@ export function GdCallComposite({
               surveyOptions: { disableSurvey: true },
               errorBar: true,
               joinCallOptions: { microphoneCheck: "skip" },
+              notificationOptions: { hideAllNotifications: true },
             }}
           />
         </div>
