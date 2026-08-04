@@ -588,6 +588,17 @@ export function packGdSessions(input: {
   });
 }
 
+export function moveGdParticipants(input: {
+  application_ids: string[];
+  to_session_id?: string | null;
+  swap_with_application_id?: string | null;
+}): Promise<{ sessions: GdSessionAdmin[] }> {
+  return adminFetch<{ sessions: GdSessionAdmin[] }>("/admin/group-discussion/move-participants", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function updateGdSession(
   sessionId: string,
   input: {

@@ -1,11 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listGdSessions, type GdSessionAdmin } from "@/lib/adminApi";
+import { useMemo, useState, type DragEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  listGdSessions,
+  moveGdParticipants,
+  type GdSessionAdmin,
+} from "@/lib/adminApi";
 import { PROGRAM_ID } from "@/lib/adminConfig";
 import type { CandidateWithMatch } from "@/lib/adminPipeline";
 import { ChevronDownIcon } from "@/components/admin/icons";
+
+const REASSIGNABLE = new Set(["draft", "meeting_ready"]);
+const DND_MIME = "application/x-admit-gd-move";
 
 function formatWhen(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -16,6 +23,10 @@ function statusTone(status: string) {
   if (status === "live") return "bg-gold-soft text-[#8a5a12]";
   if (status === "completed" || status === "scored") return "bg-forest-soft text-forest";
   return "bg-[#E4EDEE] text-text-muted";
+}
+
+function canReassign(status: string) {
+  return REASSIGNABLE.has(status);
 }
 
 type Props = {
@@ -29,29 +40,108 @@ type GroupBucket = {
   members: CandidateWithMatch[];
 };
 
+type DragPayload = {
+  applicationIds: string[];
+  fromSessionId: string | null;
+};
+
+function parseDrag(e: DragEvent): DragPayload | null {
+  const raw = e.dataTransfer.getData(DND_MIME) || e.dataTransfer.getData("text/plain");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as DragPayload;
+  } catch {
+    return null;
+  }
+}
+
 function CandidateRow({
   candidate,
+  sessionId,
+  locked,
+  selected,
+  onToggleSelect,
   onOpenCandidate,
   onMoveToFinal,
+  onDragIds,
+  dropTarget,
+  onDropOnCandidate,
 }: {
   candidate: CandidateWithMatch;
+  sessionId: string | null;
+  locked: boolean;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
   onOpenCandidate: (applicationId: string) => void;
   onMoveToFinal: (candidate: CandidateWithMatch) => void;
+  onDragIds: (applicationId: string) => string[];
+  dropTarget: boolean;
+  onDropOnCandidate: (payload: DragPayload, target: CandidateWithMatch, targetSessionId: string | null) => void;
 }) {
+  const [over, setOver] = useState(false);
+
   return (
-    <li className="px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-      <button
-        type="button"
-        onClick={() => onOpenCandidate(candidate.application_id)}
-        className="text-left min-w-0"
-      >
-        <div className="text-[13.5px] font-semibold text-text">
-          {candidate.applicant_name || "Unnamed applicant"}
-        </div>
-        <div className="text-[12px] text-text-muted">
-          {candidate.application_number || candidate.application_id.slice(0, 8)}
-        </div>
-      </button>
+    <li
+      draggable={!locked}
+      onDragStart={(e) => {
+        if (locked) {
+          e.preventDefault();
+          return;
+        }
+        const ids = onDragIds(candidate.application_id);
+        const payload: DragPayload = {
+          applicationIds: ids,
+          fromSessionId: sessionId,
+        };
+        e.dataTransfer.setData(DND_MIME, JSON.stringify(payload));
+        e.dataTransfer.setData("text/plain", JSON.stringify(payload));
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        if (locked || !dropTarget) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        if (locked || !dropTarget) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOver(false);
+        const payload = parseDrag(e);
+        if (!payload) return;
+        if (payload.applicationIds.includes(candidate.application_id)) return;
+        onDropOnCandidate(payload, candidate, sessionId);
+      }}
+      className={`px-5 py-3 flex flex-wrap items-center justify-between gap-3 ${
+        locked ? "opacity-70" : "cursor-grab active:cursor-grabbing"
+      } ${selected ? "bg-[#EEF3F8]" : ""} ${over ? "ring-2 ring-ink/25 bg-[#F3F6F6]" : ""}`}
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        {!locked && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(candidate.application_id)}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-1 accent-ink"
+            aria-label={`Select ${candidate.applicant_name || "candidate"}`}
+          />
+        )}
+        <button
+          type="button"
+          onClick={() => onOpenCandidate(candidate.application_id)}
+          className="text-left min-w-0"
+        >
+          <div className="text-[13.5px] font-semibold text-text">
+            {candidate.applicant_name || "Unnamed applicant"}
+          </div>
+          <div className="text-[12px] text-text-muted">
+            {candidate.application_number || candidate.application_id.slice(0, 8)}
+          </div>
+        </button>
+      </div>
       <button
         type="button"
         onClick={() => onMoveToFinal(candidate)}
@@ -63,29 +153,146 @@ function CandidateRow({
   );
 }
 
+function GroupBlock({
+  bucket,
+  selectedIds,
+  onToggleSelect,
+  onOpenCandidate,
+  onMoveToFinal,
+  onDragIds,
+  onDropMove,
+  onDropSwap,
+  busy,
+}: {
+  bucket: GroupBucket;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onOpenCandidate: (applicationId: string) => void;
+  onMoveToFinal: (candidate: CandidateWithMatch) => void;
+  onDragIds: (applicationId: string) => string[];
+  onDropMove: (payload: DragPayload, toSessionId: string | null) => void;
+  onDropSwap: (payload: DragPayload, target: CandidateWithMatch, targetSessionId: string) => void;
+  busy: boolean;
+}) {
+  const { session, members } = bucket;
+  const [open, setOpen] = useState(true);
+  const [over, setOver] = useState(false);
+  const locked = !canReassign(session.status) || busy;
+
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-start justify-between gap-3 px-5 py-3.5 text-left hover:bg-[#F8FAFA]"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13.5px] font-semibold text-text">
+              {session.label || "Untitled group"}
+            </span>
+            <span
+              className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusTone(session.status)}`}
+            >
+              {session.status}
+            </span>
+            {!canReassign(session.status) && (
+              <span className="text-[11px] text-text-muted">Drag locked</span>
+            )}
+          </div>
+          <div className="text-[12px] text-text-muted mt-0.5">
+            {formatWhen(session.scheduled_at)}
+            {session.professor_name ? ` · ${session.professor_name}` : ""}
+            {session.topic ? ` · ${session.topic}` : ""}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[12px] text-text-muted font-medium">{members.length}</span>
+          <ChevronDownIcon
+            className={`w-4 h-4 text-text-muted transition ${open ? "" : "-rotate-90"}`}
+          />
+        </div>
+      </button>
+
+      {open && (
+        <div
+          onDragOver={(e) => {
+            if (locked) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => {
+            if (locked) return;
+            e.preventDefault();
+            setOver(false);
+            const payload = parseDrag(e);
+            if (!payload) return;
+            if (payload.fromSessionId === session.id) return;
+            onDropMove(payload, session.id);
+          }}
+          className={`bg-bg border-t border-border ${over ? "ring-2 ring-inset ring-ink/20" : ""}`}
+        >
+          <ul className="divide-y divide-border">
+            {members.map((c) => (
+              <CandidateRow
+                key={c.application_id}
+                candidate={c}
+                sessionId={session.id}
+                locked={locked}
+                selected={selectedIds.has(c.application_id)}
+                onToggleSelect={onToggleSelect}
+                onOpenCandidate={onOpenCandidate}
+                onMoveToFinal={onMoveToFinal}
+                onDragIds={onDragIds}
+                dropTarget={!locked}
+                onDropOnCandidate={(payload, target, targetSessionId) => {
+                  if (!targetSessionId) return;
+                  if (payload.applicationIds.length === 1) {
+                    onDropSwap(payload, target, targetSessionId);
+                  } else {
+                    onDropMove(payload, targetSessionId);
+                  }
+                }}
+              />
+            ))}
+            {members.length === 0 && (
+              <li className="px-5 py-6 text-[13px] text-text-muted text-center">
+                {locked ? "No candidates in this group." : "Drop candidates here"}
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrackSection({
   title,
   sessions,
+  selectedIds,
+  onToggleSelect,
   onOpenCandidate,
   onMoveToFinal,
+  onDragIds,
+  onDropMove,
+  onDropSwap,
+  busy,
 }: {
   title: string;
   sessions: GroupBucket[];
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
   onOpenCandidate: (applicationId: string) => void;
   onMoveToFinal: (candidate: CandidateWithMatch) => void;
+  onDragIds: (applicationId: string) => string[];
+  onDropMove: (payload: DragPayload, toSessionId: string | null) => void;
+  onDropSwap: (payload: DragPayload, target: CandidateWithMatch, targetSessionId: string) => void;
+  busy: boolean;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [sectionOpen, setSectionOpen] = useState(true);
-
-  function toggleGroup(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   const total = sessions.reduce((n, g) => n + g.members.length, 0);
 
   return (
@@ -114,63 +321,20 @@ function TrackSection({
               No {title.toLowerCase()} groups yet.
             </div>
           )}
-
-          {sessions.map(({ session, members }) => {
-            const open = expanded.has(session.id);
-            return (
-              <div key={session.id} className="border-b border-border last:border-b-0">
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(session.id)}
-                  className="w-full flex items-start justify-between gap-3 px-5 py-3.5 text-left hover:bg-[#F8FAFA]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13.5px] font-semibold text-text">
-                        {session.label || "Untitled group"}
-                      </span>
-                      <span
-                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusTone(session.status)}`}
-                      >
-                        {session.status}
-                      </span>
-                    </div>
-                    <div className="text-[12px] text-text-muted mt-0.5">
-                      {formatWhen(session.scheduled_at)}
-                      {session.professor_name ? ` · ${session.professor_name}` : ""}
-                      {session.topic ? ` · ${session.topic}` : ""}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[12px] text-text-muted font-medium">
-                      {members.length}
-                    </span>
-                    <ChevronDownIcon
-                      className={`w-4 h-4 text-text-muted transition ${open ? "" : "-rotate-90"}`}
-                    />
-                  </div>
-                </button>
-
-                {open && (
-                  <ul className="bg-bg border-t border-border divide-y divide-border">
-                    {members.map((c) => (
-                      <CandidateRow
-                        key={c.application_id}
-                        candidate={c}
-                        onOpenCandidate={onOpenCandidate}
-                        onMoveToFinal={onMoveToFinal}
-                      />
-                    ))}
-                    {members.length === 0 && (
-                      <li className="px-5 py-3 text-[13px] text-text-muted">
-                        No matched candidates in this group for the current list.
-                      </li>
-                    )}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
+          {sessions.map((bucket) => (
+            <GroupBlock
+              key={bucket.session.id}
+              bucket={bucket}
+              selectedIds={selectedIds}
+              onToggleSelect={onToggleSelect}
+              onOpenCandidate={onOpenCandidate}
+              onMoveToFinal={onMoveToFinal}
+              onDragIds={onDragIds}
+              onDropMove={onDropMove}
+              onDropSwap={onDropSwap}
+              busy={busy}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -182,12 +346,27 @@ export function GroupDiscussionStagePanel({
   onOpenCandidate,
   onMoveToFinal,
 }: Props) {
+  const queryClient = useQueryClient();
   const sessionsQuery = useQuery({
     queryKey: ["gd-sessions", PROGRAM_ID],
     queryFn: () => listGdSessions(PROGRAM_ID),
     refetchInterval: 5000,
   });
   const [unassignedOpen, setUnassignedOpen] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [dropHintOver, setDropHintOver] = useState(false);
+
+  const moveMutation = useMutation({
+    mutationFn: moveGdParticipants,
+    onSuccess: () => {
+      setError(null);
+      setSelectedIds(new Set());
+      void queryClient.invalidateQueries({ queryKey: ["gd-sessions", PROGRAM_ID] });
+      void queryClient.invalidateQueries({ queryKey: ["candidates", PROGRAM_ID] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
 
   const { onlineGroups, inPersonGroups, unassigned } = useMemo(() => {
     const sessions = sessionsQuery.data ?? [];
@@ -236,6 +415,47 @@ export function GroupDiscussionStagePanel({
     };
   }, [candidates, sessionsQuery.data]);
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function dragIdsFor(applicationId: string): string[] {
+    if (selectedIds.has(applicationId) && selectedIds.size > 0) {
+      return Array.from(selectedIds);
+    }
+    return [applicationId];
+  }
+
+  function handleMove(payload: DragPayload, toSessionId: string | null) {
+    if (payload.fromSessionId === toSessionId) return;
+    moveMutation.mutate({
+      application_ids: payload.applicationIds,
+      to_session_id: toSessionId,
+    });
+  }
+
+  function handleSwap(
+    payload: DragPayload,
+    target: CandidateWithMatch,
+    targetSessionId: string,
+  ) {
+    if (payload.applicationIds.length !== 1) {
+      handleMove(payload, targetSessionId);
+      return;
+    }
+    if (payload.fromSessionId === targetSessionId) return;
+    moveMutation.mutate({
+      application_ids: payload.applicationIds,
+      to_session_id: targetSessionId,
+      swap_with_application_id: target.application_id,
+    });
+  }
+
   if (sessionsQuery.isLoading) {
     return <div className="text-sm text-text-muted">Loading group assignments…</div>;
   }
@@ -248,53 +468,115 @@ export function GroupDiscussionStagePanel({
     );
   }
 
+  const busy = moveMutation.isPending;
+
   return (
     <div className="space-y-5">
+      <p className="text-[12.5px] text-text-muted">
+        Drag candidates between any Online or In-person group. Select multiple with checkboxes,
+        then drag. Drop onto a person to swap (single). Drop onto Unassigned to remove from a
+        group. Locked after invites are sent.
+      </p>
+
+      {error && (
+        <div className="bg-brick-soft border border-brick/30 text-brick text-sm rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="font-semibold shrink-0">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {busy && (
+        <div className="text-[13px] text-text-muted font-medium">Updating group membership…</div>
+      )}
+
       <TrackSection
         title="Online"
         sessions={onlineGroups}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
         onOpenCandidate={onOpenCandidate}
         onMoveToFinal={onMoveToFinal}
+        onDragIds={dragIdsFor}
+        onDropMove={handleMove}
+        onDropSwap={handleSwap}
+        busy={busy}
       />
       <TrackSection
         title="In-person"
         sessions={inPersonGroups}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
         onOpenCandidate={onOpenCandidate}
         onMoveToFinal={onMoveToFinal}
+        onDragIds={dragIdsFor}
+        onDropMove={handleMove}
+        onDropSwap={handleSwap}
+        busy={busy}
       />
 
-      {unassigned.length > 0 && (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setUnassignedOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-4"
-          >
-            <span className="flex items-center gap-2 font-serif font-bold text-text text-[15px]">
-              Unassigned
-              <span className="text-text-muted text-[12.5px] font-sans font-normal">
-                {unassigned.length} candidate{unassigned.length === 1 ? "" : "s"} · not in an active
-                group
-              </span>
+      <div
+        className={`bg-surface border border-border rounded-xl overflow-hidden ${
+          dropHintOver ? "ring-2 ring-ink/25" : ""
+        }`}
+        onDragOver={(e) => {
+          if (busy) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDropHintOver(true);
+        }}
+        onDragLeave={() => setDropHintOver(false)}
+        onDrop={(e) => {
+          if (busy) return;
+          e.preventDefault();
+          setDropHintOver(false);
+          const payload = parseDrag(e);
+          if (!payload || payload.fromSessionId === null) return;
+          handleMove(payload, null);
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setUnassignedOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-5 py-4"
+        >
+          <span className="flex items-center gap-2 font-serif font-bold text-text text-[15px]">
+            Unassigned
+            <span className="text-text-muted text-[12.5px] font-sans font-normal">
+              {unassigned.length} candidate{unassigned.length === 1 ? "" : "s"}
+              {unassigned.length === 0 ? " · drop here to unassign" : " · not in an active group"}
             </span>
-            <ChevronDownIcon
-              className={`w-4 h-4 text-text-muted transition ${unassignedOpen ? "" : "-rotate-90"}`}
-            />
-          </button>
-          {unassignedOpen && (
-            <ul className="border-t border-border divide-y divide-border bg-bg">
-              {unassigned.map((c) => (
-                <CandidateRow
-                  key={c.application_id}
-                  candidate={c}
-                  onOpenCandidate={onOpenCandidate}
-                  onMoveToFinal={onMoveToFinal}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+          </span>
+          <ChevronDownIcon
+            className={`w-4 h-4 text-text-muted transition ${unassignedOpen ? "" : "-rotate-90"}`}
+          />
+        </button>
+        {unassignedOpen && (
+          <ul className="border-t border-border divide-y divide-border bg-bg">
+            {unassigned.map((c) => (
+              <CandidateRow
+                key={c.application_id}
+                candidate={c}
+                sessionId={null}
+                locked={busy}
+                selected={selectedIds.has(c.application_id)}
+                onToggleSelect={toggleSelect}
+                onOpenCandidate={onOpenCandidate}
+                onMoveToFinal={onMoveToFinal}
+                onDragIds={dragIdsFor}
+                dropTarget={false}
+                onDropOnCandidate={() => {}}
+              />
+            ))}
+            {unassigned.length === 0 && (
+              <li className="px-5 py-6 text-[13px] text-text-muted text-center">
+                Drop candidates here to unassign from a group
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
