@@ -64,8 +64,6 @@ function CandidateRow({
   onOpenCandidate,
   onMoveToFinal,
   onDragIds,
-  dropTarget,
-  onDropOnCandidate,
 }: {
   candidate: CandidateWithMatch;
   sessionId: string | null;
@@ -75,11 +73,7 @@ function CandidateRow({
   onOpenCandidate: (applicationId: string) => void;
   onMoveToFinal: (candidate: CandidateWithMatch) => void;
   onDragIds: (applicationId: string) => string[];
-  dropTarget: boolean;
-  onDropOnCandidate: (payload: DragPayload, target: CandidateWithMatch, targetSessionId: string | null) => void;
 }) {
-  const [over, setOver] = useState(false);
-
   return (
     <li
       draggable={!locked}
@@ -97,26 +91,9 @@ function CandidateRow({
         e.dataTransfer.setData("text/plain", JSON.stringify(payload));
         e.dataTransfer.effectAllowed = "move";
       }}
-      onDragOver={(e) => {
-        if (locked || !dropTarget) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        if (locked || !dropTarget) return;
-        e.preventDefault();
-        e.stopPropagation();
-        setOver(false);
-        const payload = parseDrag(e);
-        if (!payload) return;
-        if (payload.applicationIds.includes(candidate.application_id)) return;
-        onDropOnCandidate(payload, candidate, sessionId);
-      }}
       className={`px-5 py-3 flex flex-wrap items-center justify-between gap-3 ${
         locked ? "opacity-70" : "cursor-grab active:cursor-grabbing"
-      } ${selected ? "bg-[#EEF3F8]" : ""} ${over ? "ring-2 ring-ink/25 bg-[#F3F6F6]" : ""}`}
+      } ${selected ? "bg-[#EEF3F8]" : ""}`}
     >
       <div className="flex items-start gap-3 min-w-0">
         {!locked && (
@@ -161,7 +138,6 @@ function GroupBlock({
   onMoveToFinal,
   onDragIds,
   onDropMove,
-  onDropSwap,
   busy,
 }: {
   bucket: GroupBucket;
@@ -171,7 +147,6 @@ function GroupBlock({
   onMoveToFinal: (candidate: CandidateWithMatch) => void;
   onDragIds: (applicationId: string) => string[];
   onDropMove: (payload: DragPayload, toSessionId: string | null) => void;
-  onDropSwap: (payload: DragPayload, target: CandidateWithMatch, targetSessionId: string) => void;
   busy: boolean;
 }) {
   const { session, members } = bucket;
@@ -246,15 +221,6 @@ function GroupBlock({
                 onOpenCandidate={onOpenCandidate}
                 onMoveToFinal={onMoveToFinal}
                 onDragIds={onDragIds}
-                dropTarget={!locked}
-                onDropOnCandidate={(payload, target, targetSessionId) => {
-                  if (!targetSessionId) return;
-                  if (payload.applicationIds.length === 1) {
-                    onDropSwap(payload, target, targetSessionId);
-                  } else {
-                    onDropMove(payload, targetSessionId);
-                  }
-                }}
               />
             ))}
             {members.length === 0 && (
@@ -278,7 +244,6 @@ function TrackSection({
   onMoveToFinal,
   onDragIds,
   onDropMove,
-  onDropSwap,
   busy,
 }: {
   title: string;
@@ -289,7 +254,6 @@ function TrackSection({
   onMoveToFinal: (candidate: CandidateWithMatch) => void;
   onDragIds: (applicationId: string) => string[];
   onDropMove: (payload: DragPayload, toSessionId: string | null) => void;
-  onDropSwap: (payload: DragPayload, target: CandidateWithMatch, targetSessionId: string) => void;
   busy: boolean;
 }) {
   const [sectionOpen, setSectionOpen] = useState(true);
@@ -331,7 +295,6 @@ function TrackSection({
               onMoveToFinal={onMoveToFinal}
               onDragIds={onDragIds}
               onDropMove={onDropMove}
-              onDropSwap={onDropSwap}
               busy={busy}
             />
           ))}
@@ -439,23 +402,6 @@ export function GroupDiscussionStagePanel({
     });
   }
 
-  function handleSwap(
-    payload: DragPayload,
-    target: CandidateWithMatch,
-    targetSessionId: string,
-  ) {
-    if (payload.applicationIds.length !== 1) {
-      handleMove(payload, targetSessionId);
-      return;
-    }
-    if (payload.fromSessionId === targetSessionId) return;
-    moveMutation.mutate({
-      application_ids: payload.applicationIds,
-      to_session_id: targetSessionId,
-      swap_with_application_id: target.application_id,
-    });
-  }
-
   if (sessionsQuery.isLoading) {
     return <div className="text-sm text-text-muted">Loading group assignments…</div>;
   }
@@ -473,9 +419,10 @@ export function GroupDiscussionStagePanel({
   return (
     <div className="space-y-5">
       <p className="text-[12.5px] text-text-muted">
-        Drag candidates between any Online or In-person group. Select multiple with checkboxes,
-        then drag. Drop onto a person to swap (single). Drop onto Unassigned to remove from a
-        group. Locked after invites are sent.
+        Drag candidates into any Online or In-person group to move them (no swap). Select multiple
+        with checkboxes, then drag. Drop onto Unassigned to remove from a group. Online groups with
+        a Teams meeting go back to draft after a roster change so the meeting can be recreated.
+        Locked after invites are sent.
       </p>
 
       {error && (
@@ -500,7 +447,6 @@ export function GroupDiscussionStagePanel({
         onMoveToFinal={onMoveToFinal}
         onDragIds={dragIdsFor}
         onDropMove={handleMove}
-        onDropSwap={handleSwap}
         busy={busy}
       />
       <TrackSection
@@ -512,7 +458,6 @@ export function GroupDiscussionStagePanel({
         onMoveToFinal={onMoveToFinal}
         onDragIds={dragIdsFor}
         onDropMove={handleMove}
-        onDropSwap={handleSwap}
         busy={busy}
       />
 
@@ -565,8 +510,6 @@ export function GroupDiscussionStagePanel({
                 onOpenCandidate={onOpenCandidate}
                 onMoveToFinal={onMoveToFinal}
                 onDragIds={dragIdsFor}
-                dropTarget={false}
-                onDropOnCandidate={() => {}}
               />
             ))}
             {unassigned.length === 0 && (

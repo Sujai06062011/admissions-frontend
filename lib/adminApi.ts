@@ -599,6 +599,13 @@ export function moveGdParticipants(input: {
   });
 }
 
+export function createGdMeeting(sessionId: string): Promise<GdSessionAdmin> {
+  return adminFetch<GdSessionAdmin>(
+    `/admin/group-discussion/sessions/${sessionId}/create-meeting`,
+    { method: "POST" },
+  );
+}
+
 export function updateGdSession(
   sessionId: string,
   input: {

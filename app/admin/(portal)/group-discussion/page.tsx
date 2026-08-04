@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createGdMeeting,
   endGdSession,
   getGdSession,
   getGdSettings,
@@ -438,10 +439,26 @@ function HostPageInner() {
     onError: (err: Error) => setError(err.message),
   });
 
+  const createMeetingMutation = useMutation({
+    mutationFn: () => createGdMeeting(activeId!),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
   const canStart =
     Boolean(session) &&
     Boolean(session?.topic) &&
     ["invited", "meeting_ready"].includes(session?.status ?? "");
+
+  const canCreateMeeting =
+    trackTab === "online" &&
+    Boolean(session) &&
+    Boolean(session?.scheduled_at) &&
+    (session?.participants?.length ?? 0) > 0 &&
+    (session?.status === "draft" || (session?.status === "meeting_ready" && !session?.join_url));
 
   const canEnd =
     Boolean(session) && ["live", "invited", "meeting_ready"].includes(session?.status ?? "");
@@ -628,6 +645,16 @@ function HostPageInner() {
               )}
 
               <div className="flex flex-wrap gap-3 mb-5">
+                {canCreateMeeting && (
+                  <button
+                    type="button"
+                    disabled={createMeetingMutation.isPending}
+                    onClick={() => createMeetingMutation.mutate()}
+                    className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40 cursor-pointer"
+                  >
+                    {createMeetingMutation.isPending ? "Creating meeting…" : "Create Teams meeting"}
+                  </button>
+                )}
                 {trackTab === "online" && (
                   <button
                     type="button"
@@ -641,6 +668,12 @@ function HostPageInner() {
                         ? "Starting…"
                         : "Start discussion"}
                   </button>
+                )}
+                {session.status === "draft" && trackTab === "online" && !canCreateMeeting && (
+                  <p className="w-full text-[12.5px] text-text-muted">
+                    Roster changed or meeting not ready — set schedule and participants, then Create
+                    Teams meeting before Start.
+                  </p>
                 )}
                 <button
                   type="button"
