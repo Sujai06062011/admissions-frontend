@@ -282,6 +282,7 @@ function TrackSection({
   onDragIds,
   onDropMove,
   busy,
+  toneClass,
 }: {
   title: string;
   sessions: GroupBucket[];
@@ -292,6 +293,8 @@ function TrackSection({
   onDragIds: (applicationId: string) => string[];
   onDropMove: (payload: DragPayload, toSessionId: string | null) => void;
   busy: boolean;
+  /** Mild section background so Online / In-person / Completed read apart. */
+  toneClass: string;
 }) {
   const [sectionOpen, setSectionOpen] = useState(true);
   const total = sessions.reduce(
@@ -300,7 +303,7 @@ function TrackSection({
   );
 
   return (
-    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+    <div className={`border border-border rounded-xl overflow-hidden ${toneClass}`}>
       <button
         type="button"
         onClick={() => setSectionOpen((v) => !v)}
@@ -319,7 +322,7 @@ function TrackSection({
       </button>
 
       {sectionOpen && (
-        <div className="border-t border-border">
+        <div className="border-t border-border/80 bg-surface/70">
           {sessions.length === 0 && (
             <div className="px-5 py-6 text-[13px] text-text-muted">
               No {title.toLowerCase()} groups yet.
@@ -487,6 +490,7 @@ export function GroupDiscussionStagePanel({
 
       <TrackSection
         title="Online"
+        toneClass="bg-[#EAF2F8]"
         sessions={onlineGroups}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
@@ -498,6 +502,7 @@ export function GroupDiscussionStagePanel({
       />
       <TrackSection
         title="In-person"
+        toneClass="bg-[#F2EBE3]"
         sessions={inPersonGroups}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
@@ -510,6 +515,7 @@ export function GroupDiscussionStagePanel({
       {completedGroups.length > 0 && (
         <TrackSection
           title="Completed"
+          toneClass="bg-[#E8F3EC]"
           sessions={completedGroups}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
@@ -522,7 +528,7 @@ export function GroupDiscussionStagePanel({
       )}
 
       <div
-        className={`bg-surface border border-border rounded-xl overflow-hidden ${
+        className={`border border-border rounded-xl overflow-hidden bg-[#F0F0F2] ${
           dropHintOver ? "ring-2 ring-ink/25" : ""
         }`}
         onDragOver={(e) => {
@@ -560,7 +566,7 @@ export function GroupDiscussionStagePanel({
           />
         </button>
         {unassignedOpen && (
-          <ul className="border-t border-border divide-y divide-border bg-bg">
+          <ul className="border-t border-border/80 divide-y divide-border bg-surface/70">
             {unassigned.map((c) => (
               <CandidateRow
                 key={c.application_id}
