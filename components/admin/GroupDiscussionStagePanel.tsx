@@ -12,6 +12,8 @@ import type { CandidateWithMatch } from "@/lib/adminPipeline";
 import { ChevronDownIcon } from "@/components/admin/icons";
 
 const REASSIGNABLE = new Set(["draft", "meeting_ready"]);
+const ACTIVE_STATUSES = new Set(["draft", "meeting_ready", "invited", "live"]);
+const FINISHED_STATUSES = new Set(["completed", "scored"]);
 const DND_MIME = "application/x-admit-gd-move";
 
 function formatWhen(iso: string | null | undefined) {
@@ -36,9 +38,18 @@ type Props = {
   onMoveToFinal: (candidate: CandidateWithMatch) => void;
 };
 
+/** Roster row — always from the GD session; enriched when still on the GD stage tab. */
+type GroupMember = {
+  application_id: string;
+  applicant_name: string | null;
+  application_number: string | null;
+  /** Present only while application status is still group_discussion. */
+  candidate: CandidateWithMatch | null;
+};
+
 type GroupBucket = {
   session: GdSessionAdmin;
-  members: CandidateWithMatch[];
+  members: GroupMember[];
 };
 
 type DragPayload = {
@@ -56,8 +67,23 @@ function parseDrag(e: DragEvent): DragPayload | null {
   }
 }
 
+function membersFromSession(
+  session: GdSessionAdmin,
+  byCandidateId: Map<string, CandidateWithMatch>,
+): GroupMember[] {
+  return (session.participants ?? []).map((p) => {
+    const candidate = byCandidateId.get(p.application_id) ?? null;
+    return {
+      application_id: p.application_id,
+      applicant_name: candidate?.applicant_name ?? p.applicant_name,
+      application_number: candidate?.application_number ?? p.application_number,
+      candidate,
+    };
+  });
+}
+
 function CandidateRow({
-  candidate,
+  member,
   sessionId,
   locked,
   selected,
@@ -66,7 +92,7 @@ function CandidateRow({
   onMoveToFinal,
   onDragIds,
 }: {
-  candidate: CandidateWithMatch;
+  member: GroupMember;
   sessionId: string | null;
   locked: boolean;
   selected: boolean;
@@ -75,15 +101,17 @@ function CandidateRow({
   onMoveToFinal: (candidate: CandidateWithMatch) => void;
   onDragIds: (applicationId: string) => string[];
 }) {
+  const canDrag = !locked && Boolean(member.candidate);
+
   return (
     <li
-      draggable={!locked}
+      draggable={canDrag}
       onDragStart={(e) => {
-        if (locked) {
+        if (!canDrag) {
           e.preventDefault();
           return;
         }
-        const ids = onDragIds(candidate.application_id);
+        const ids = onDragIds(member.application_id);
         const payload: DragPayload = {
           applicationIds: ids,
           fromSessionId: sessionId,
@@ -93,40 +121,45 @@ function CandidateRow({
         e.dataTransfer.effectAllowed = "move";
       }}
       className={`px-5 py-3 flex flex-wrap items-center justify-between gap-3 ${
-        locked ? "opacity-70" : "cursor-grab active:cursor-grabbing"
+        canDrag ? "cursor-grab active:cursor-grabbing" : "opacity-90"
       } ${selected ? "bg-[#EEF3F8]" : ""}`}
     >
       <div className="flex items-start gap-3 min-w-0">
-        {!locked && (
+        {canDrag && (
           <input
             type="checkbox"
             checked={selected}
-            onChange={() => onToggleSelect(candidate.application_id)}
+            onChange={() => onToggleSelect(member.application_id)}
             onClick={(e) => e.stopPropagation()}
             className="mt-1 accent-ink"
-            aria-label={`Select ${candidate.applicant_name || "candidate"}`}
+            aria-label={`Select ${member.applicant_name || "candidate"}`}
           />
         )}
         <button
           type="button"
-          onClick={() => onOpenCandidate(candidate.application_id)}
+          onClick={() => onOpenCandidate(member.application_id)}
           className="text-left min-w-0"
         >
           <div className="text-[13.5px] font-semibold text-text">
-            {candidate.applicant_name || "Unnamed applicant"}
+            {member.applicant_name || "Unnamed applicant"}
           </div>
           <div className="text-[12px] text-text-muted">
-            {candidate.application_number || candidate.application_id.slice(0, 8)}
+            {member.application_number || member.application_id.slice(0, 8)}
+            {!member.candidate ? " · left GD stage" : ""}
           </div>
         </button>
       </div>
-      <button
-        type="button"
-        onClick={() => onMoveToFinal(candidate)}
-        className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
-      >
-        Move to Final Interview
-      </button>
+      {member.candidate ? (
+        <button
+          type="button"
+          onClick={() => onMoveToFinal(member.candidate!)}
+          className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
+        >
+          Move to Final Interview
+        </button>
+      ) : (
+        <span className="text-[12px] text-text-muted">—</span>
+      )}
     </li>
   );
 }
@@ -154,6 +187,7 @@ function GroupBlock({
   const [open, setOpen] = useState(true);
   const [over, setOver] = useState(false);
   const locked = !canReassign(session.status) || busy;
+  const rosterCount = session.participants?.length ?? members.length;
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -176,16 +210,16 @@ function GroupBlock({
               <span className="text-[11px] text-text-muted">Drag locked</span>
             )}
           </div>
-                    <div className="text-[12px] text-text-muted mt-0.5">
-                      {session.track === "manual" ? "In-person" : "Online"}
-                      {" · "}
-                      {formatWhen(session.scheduled_at)}
-                      {session.professor_name ? ` · ${session.professor_name}` : ""}
-                      {session.topic ? ` · ${session.topic}` : ""}
-                    </div>
+          <div className="text-[12px] text-text-muted mt-0.5">
+            {session.track === "manual" ? "In-person" : "Online"}
+            {" · "}
+            {formatWhen(session.scheduled_at)}
+            {session.professor_name ? ` · ${session.professor_name}` : ""}
+            {session.topic ? ` · ${session.topic}` : ""}
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[12px] text-text-muted font-medium">{members.length}</span>
+          <span className="text-[12px] text-text-muted font-medium">{rosterCount}</span>
           <ChevronDownIcon
             className={`w-4 h-4 text-text-muted transition ${open ? "" : "-rotate-90"}`}
           />
@@ -213,13 +247,13 @@ function GroupBlock({
           className={`bg-bg border-t border-border ${over ? "ring-2 ring-inset ring-ink/20" : ""}`}
         >
           <ul className="divide-y divide-border">
-            {members.map((c) => (
+            {members.map((m) => (
               <CandidateRow
-                key={c.application_id}
-                candidate={c}
+                key={m.application_id}
+                member={m}
                 sessionId={session.id}
                 locked={locked}
-                selected={selectedIds.has(c.application_id)}
+                selected={selectedIds.has(m.application_id)}
                 onToggleSelect={onToggleSelect}
                 onOpenCandidate={onOpenCandidate}
                 onMoveToFinal={onMoveToFinal}
@@ -260,7 +294,10 @@ function TrackSection({
   busy: boolean;
 }) {
   const [sectionOpen, setSectionOpen] = useState(true);
-  const total = sessions.reduce((n, g) => n + g.members.length, 0);
+  const total = sessions.reduce(
+    (n, g) => n + (g.session.participants?.length ?? g.members.length),
+    0,
+  );
 
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -336,50 +373,18 @@ export function GroupDiscussionStagePanel({
 
   const { onlineGroups, inPersonGroups, completedGroups, unassigned } = useMemo(() => {
     const sessions = sessionsQuery.data ?? [];
-    const active = sessions.filter((s) =>
-      ["draft", "meeting_ready", "invited", "live"].includes(s.status),
-    );
-    const finished = sessions.filter((s) => ["completed", "scored"].includes(s.status));
+    const byCandidateId = new Map(candidates.map((c) => [c.application_id, c] as const));
 
-    const byApp = new Map<string, GdSessionAdmin>();
-    // Prefer active assignment; finished only if not also in an active session.
+    const active = sessions.filter((s) => ACTIVE_STATUSES.has(s.status));
+    const finished = sessions.filter((s) => FINISHED_STATUSES.has(s.status));
+
+    // Application → owning session (active wins over finished).
+    const sessionByApp = new Map<string, GdSessionAdmin>();
     for (const s of finished) {
-      for (const p of s.participants ?? []) {
-        byApp.set(p.application_id, s);
-      }
+      for (const p of s.participants ?? []) sessionByApp.set(p.application_id, s);
     }
     for (const s of active) {
-      for (const p of s.participants ?? []) {
-        byApp.set(p.application_id, s);
-      }
-    }
-
-    const onlineBuckets = new Map<string, GroupBucket>();
-    const inPersonBuckets = new Map<string, GroupBucket>();
-    const completedBuckets = new Map<string, GroupBucket>();
-    const unassignedList: CandidateWithMatch[] = [];
-
-    for (const c of candidates) {
-      const session = byApp.get(c.application_id);
-      if (!session) {
-        unassignedList.push(c);
-        continue;
-      }
-      if (["completed", "scored"].includes(session.status)) {
-        const existing = completedBuckets.get(session.id);
-        if (existing) existing.members.push(c);
-        else completedBuckets.set(session.id, { session, members: [c] });
-        continue;
-      }
-      const map = session.track === "manual" ? inPersonBuckets : onlineBuckets;
-      const existing = map.get(session.id);
-      if (existing) existing.members.push(c);
-      else map.set(session.id, { session, members: [c] });
-    }
-
-    for (const s of active) {
-      const map = s.track === "manual" ? inPersonBuckets : onlineBuckets;
-      if (!map.has(s.id)) map.set(s.id, { session: s, members: [] });
+      for (const p of s.participants ?? []) sessionByApp.set(p.application_id, s);
     }
 
     const sortBuckets = (rows: GroupBucket[]) =>
@@ -388,6 +393,30 @@ export function GroupDiscussionStagePanel({
         const bt = b.session.scheduled_at ? new Date(b.session.scheduled_at).getTime() : 0;
         return bt - at;
       });
+
+    const onlineBuckets = new Map<string, GroupBucket>();
+    const inPersonBuckets = new Map<string, GroupBucket>();
+
+    for (const s of active) {
+      const bucket: GroupBucket = {
+        session: s,
+        members: membersFromSession(s, byCandidateId),
+      };
+      if (s.track === "manual") inPersonBuckets.set(s.id, bucket);
+      else onlineBuckets.set(s.id, bucket);
+    }
+
+    // Completed/scored: full session roster. Include a finished group if anyone on
+    // the GD stage tab still belongs to it (so counts stay truthful for the group).
+    const completedBuckets = new Map<string, GroupBucket>();
+    for (const s of finished) {
+      const members = membersFromSession(s, byCandidateId);
+      const stillOnGdTab = members.some((m) => byCandidateId.has(m.application_id));
+      if (!stillOnGdTab) continue;
+      completedBuckets.set(s.id, { session: s, members });
+    }
+
+    const unassignedList = candidates.filter((c) => !sessionByApp.has(c.application_id));
 
     return {
       onlineGroups: sortBuckets([...onlineBuckets.values()]),
@@ -438,9 +467,9 @@ export function GroupDiscussionStagePanel({
   return (
     <div className="space-y-5">
       <p className="text-[12.5px] text-text-muted">
-        Drag candidates into any Online or In-person group to move them (no swap). Select multiple
-        with checkboxes, then drag. Drop onto Unassigned to remove from a group. Completed GDs stay
-        under Completed with their groups. Locked after invites are sent.
+        Groups always show the full session roster. Drag only works for people still in the GD
+        stage before invites. Completed groups stay under Completed with a green status. Unassigned
+        is only for GD-stage candidates with no group.
       </p>
 
       {error && (
@@ -535,7 +564,12 @@ export function GroupDiscussionStagePanel({
             {unassigned.map((c) => (
               <CandidateRow
                 key={c.application_id}
-                candidate={c}
+                member={{
+                  application_id: c.application_id,
+                  applicant_name: c.applicant_name,
+                  application_number: c.application_number,
+                  candidate: c,
+                }}
                 sessionId={null}
                 locked={busy}
                 selected={selectedIds.has(c.application_id)}

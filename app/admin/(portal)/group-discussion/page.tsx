@@ -597,6 +597,9 @@ function HostPageInner() {
                   </div>
                   <div className="text-[12px] text-text-muted mt-0.5">
                     {formatWhen(s.scheduled_at)}
+                    {" · "}
+                    {s.participants?.length ?? 0} candidate
+                    {(s.participants?.length ?? 0) === 1 ? "" : "s"}
                   </div>
                   <span
                     className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusTone(s.status)}`}
