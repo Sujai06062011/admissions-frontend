@@ -36,6 +36,10 @@ export interface CandidateListItem {
   preference_match_score: number | null;
   test_a_score: number | null;
   test_b_score: number | null;
+  /** GD overall on 0–10. Null until scored. */
+  gd_score?: number | null;
+  /** "online" | "manual" from latest GD session, or null if unassigned. */
+  gd_track?: string | null;
   proctoring_flagged: boolean | null;
   /** True when the candidate consented to submit despite name/field mismatches
    * vs OCR — stored under profile_data.data.data_mismatches. */

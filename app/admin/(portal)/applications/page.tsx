@@ -33,7 +33,6 @@ import { ScoreGauge } from "@/components/admin/ScoreGauge";
 import { Table, type TableColumn } from "@/components/admin/Table";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { CandidateDrawer } from "@/components/admin/CandidateDrawer";
-import { GroupDiscussionStagePanel } from "@/components/admin/GroupDiscussionStagePanel";
 import { ChevronDownIcon, CloseIcon, SearchIcon, SlidersIcon } from "@/components/admin/icons";
 
 type StageTabKey =
@@ -43,6 +42,8 @@ type StageTabKey =
   | "group_discussion"
   | "final_interview"
   | "offered";
+
+type GdTrackFilter = "all" | "online" | "manual";
 
 type PendingAction =
   | { type: "move_to_campus"; candidate: CandidateWithMatch }
@@ -64,6 +65,12 @@ function formatPercentage(value: number | string | null): string {
 function formatScoreOutOf100(value: number | null): string {
   if (value == null) return "—";
   return `${Math.round(value)}/100`;
+}
+
+/** GD overall is 0–10 — show one decimal (e.g. 7.2). */
+function formatGdScore(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return value.toFixed(1);
 }
 
 function CandidateCell({
@@ -345,6 +352,7 @@ export default function ApplicationsPage() {
   const [overrideReason, setOverrideReason] = useState("");
   const [stageFilters, setStageFilters] = useState<Set<PipelineStage>>(new Set());
   const [actionFilters, setActionFilters] = useState<Set<ScreeningActionKey>>(new Set());
+  const [gdTrackFilter, setGdTrackFilter] = useState<GdTrackFilter>("all");
 
   const candidatesQuery = useQuery({
     queryKey: ["candidates", PROGRAM_ID],
@@ -387,6 +395,15 @@ export default function ApplicationsPage() {
 
   const filtered = useMemo(() => searchCandidates(allCandidates, search), [allCandidates, search]);
   const counts = useMemo(() => countByStage(allCandidates), [allCandidates]);
+
+  const stageRows = useMemo(() => {
+    if (tab === "screening") return [];
+    let rows = filtered.filter((c) => c.stage === tab);
+    if (tab === "group_discussion" && gdTrackFilter !== "all") {
+      rows = rows.filter((c) => c.gd_track === gdTrackFilter);
+    }
+    return withRank(rows);
+  }, [tab, filtered, gdTrackFilter]);
 
   const screeningFiltered = useMemo(() => {
     if (stageFilters.size === 0 && actionFilters.size === 0) {
@@ -497,8 +514,6 @@ export default function ApplicationsPage() {
   const passedScoreBands = computeScoreBands(passedRows.map((c) => c.preference_match_score));
   const rejectedScoreBands = computeScoreBands(rejectedRows.map((c) => c.preference_match_score));
 
-  const stageRows =
-    tab === "screening" ? [] : withRank(filtered.filter((c) => c.stage === tab));
   const stageScoreBands = computeScoreBands(stageRows.map((c) => c.preference_match_score));
 
   const filtersActive = stageFilters.size > 0 || actionFilters.size > 0;
@@ -768,6 +783,17 @@ export default function ApplicationsPage() {
       header: "Video Interview",
       render: (c) => formatScoreOutOf100(c.test_b_score),
     },
+    ...(tab === "group_discussion"
+      ? [
+          {
+            key: "gd_score",
+            header: "GD Score",
+            render: (c: CandidateWithMatch & { rank: number }) => (
+              <span className="tabular-nums">{formatGdScore(c.gd_score)}</span>
+            ),
+          } as TableColumn<CandidateWithMatch & { rank: number }>,
+        ]
+      : []),
     {
       key: "action",
       header: "Action",
@@ -790,11 +816,18 @@ export default function ApplicationsPage() {
           );
         }
         if (tab === "group_discussion") {
+          const canMove = c.gd_score != null;
           return (
             <button
               type="button"
+              disabled={!canMove}
+              title={canMove ? undefined : "GD score required before moving to Final Interview"}
               onClick={() => setPendingAction({ type: "move_to_final", candidate: c })}
-              className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
+              className={`text-[12.5px] font-semibold ${
+                canMove
+                  ? "text-ink-light hover:text-ink"
+                  : "text-text-muted cursor-not-allowed"
+              }`}
             >
               Move to Final Interview
             </button>
@@ -895,9 +928,38 @@ export default function ApplicationsPage() {
           onChange={(k) => {
             setTab(k as StageTabKey);
             setSelectedIds(new Set());
+            setGdTrackFilter("all");
           }}
         />
       </div>
+
+      {!isLoading && !isError && tab === "group_discussion" && (
+        <div className="flex items-center gap-2 mb-4">
+          {(
+            [
+              { key: "all", label: "All" },
+              { key: "online", label: "Online" },
+              { key: "manual", label: "In-person" },
+            ] as const
+          ).map((chip) => {
+            const active = gdTrackFilter === chip.key;
+            return (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => setGdTrackFilter(chip.key)}
+                className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold border transition ${
+                  active
+                    ? "bg-ink text-white border-ink"
+                    : "bg-surface text-text border-border hover:border-ink/30"
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {actionError && (
         <div className="bg-brick-soft border border-brick/30 text-brick text-sm rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
@@ -1005,21 +1067,17 @@ export default function ApplicationsPage() {
         </div>
       )}
 
-      {!isLoading && !isError && tab === "group_discussion" && (
-        <GroupDiscussionStagePanel
-          candidates={stageRows}
-          onOpenCandidate={(id) => setDrawerId(id)}
-          onMoveToFinal={(c) => setPendingAction({ type: "move_to_final", candidate: c })}
-        />
-      )}
-
-      {!isLoading && !isError && tab !== "screening" && tab !== "group_discussion" && (
+      {!isLoading && !isError && tab !== "screening" && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <Table
             columns={stageColumns}
             rows={stageRows}
             rowKey={(c) => c.application_id}
-            emptyMessage="No candidates at this stage yet."
+            emptyMessage={
+              tab === "group_discussion" && gdTrackFilter !== "all"
+                ? `No ${gdTrackFilter === "manual" ? "in-person" : "online"} GD candidates.`
+                : "No candidates at this stage yet."
+            }
             onRowClick={(c) => setDrawerId(c.application_id)}
             rowClassName={(c) => rowHighlightClass(c, overriddenIds)}
           />

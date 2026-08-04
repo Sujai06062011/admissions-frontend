@@ -26,7 +26,13 @@ const FIELD_DEFS: FieldDef[] = [
   { field_name: "certifications_count", label: "Certifications & Courses", supportsHardCutoff: true, maxCutoff: 10, unit: "" },
   { field_name: "test_a_score", label: "Campus Test", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
   { field_name: "test_b_score", label: "Video Interview", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
+  { field_name: "gd_score", label: "Group Discussion", supportsHardCutoff: false, maxCutoff: 100, unit: "" },
 ];
+
+/** Display % defaults when a field has never been saved for this program. */
+const DEFAULT_SOFT_WEIGHT_PERCENT: Record<string, number> = {
+  gd_score: 10,
+};
 
 interface FieldState {
   field_name: string;
@@ -60,12 +66,16 @@ function toStoredWeight(displayPercent: number): number {
 function fieldStatesFromConfigs(configs: PreferenceConfigResponse[]): FieldState[] {
   return FIELD_DEFS.map((def) => {
     const existing = configs.find((c) => c.field_name === def.field_name);
+    const defaultPercent = DEFAULT_SOFT_WEIGHT_PERCENT[def.field_name] ?? 0;
+    const softWeightPercent = existing
+      ? (existing.soft_weight ?? 0) * 100
+      : defaultPercent;
     return {
       field_name: def.field_name,
       hard_cutoff_enabled: existing?.is_hard_cutoff ?? false,
       cutoff_value: existing?.cutoff_value ?? 0,
-      weight_enabled: (existing?.soft_weight ?? 0) > 0,
-      soft_weight: (existing?.soft_weight ?? 0) * 100,
+      weight_enabled: softWeightPercent > 0,
+      soft_weight: softWeightPercent,
     };
   });
 }
