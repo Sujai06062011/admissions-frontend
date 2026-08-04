@@ -13,6 +13,7 @@ import {
   listGdSessions,
   packGdSessions,
   previewGdPack,
+  sendGdInvites,
   startGdSession,
   updateGdSession,
   type GdSessionAdmin,
@@ -342,6 +343,8 @@ function HostPageInner() {
     topic: "",
   });
 
+  const [inviteNote, setInviteNote] = useState<string | null>(null);
+
   const packIds = useMemo(() => {
     const raw = searchParams.get("ids");
     if (!raw) return [] as string[];
@@ -396,6 +399,7 @@ function HostPageInner() {
       topic: session.topic || "",
     });
     setEditing(false);
+    setInviteNote(null);
   }, [session?.id]);
 
   function invalidate() {
@@ -443,15 +447,35 @@ function HostPageInner() {
     mutationFn: () => createGdMeeting(activeId!),
     onSuccess: () => {
       setError(null);
+      setInviteNote(null);
       invalidate();
     },
     onError: (err: Error) => setError(err.message),
   });
 
-  const canStart =
-    Boolean(session) &&
-    Boolean(session?.topic) &&
-    ["invited", "meeting_ready"].includes(session?.status ?? "");
+  const inviteMutation = useMutation({
+    mutationFn: () => sendGdInvites(activeId!),
+    onSuccess: (res) => {
+      setError(null);
+      const ok = res.results.filter((r) => r.success).length;
+      const fail = res.results.filter((r) => !r.success).length;
+      setInviteNote(
+        fail === 0
+          ? `Invites sent (${ok}). Candidates get portal login; moderator gets the Teams link.`
+          : `Invites finished: ${ok} sent, ${fail} failed. Check participant rows.`,
+      );
+      invalidate();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const onlineMeetingReady =
+    trackTab === "online" && Boolean(session?.join_url) && session?.status !== "draft";
+  const inPersonReady =
+    trackTab === "manual" &&
+    ["meeting_ready", "invited", "live"].includes(session?.status ?? "");
+
+  const meetingReadyForActions = onlineMeetingReady || inPersonReady;
 
   const canCreateMeeting =
     trackTab === "online" &&
@@ -460,8 +484,29 @@ function HostPageInner() {
     (session?.participants?.length ?? 0) > 0 &&
     (session?.status === "draft" || (session?.status === "meeting_ready" && !session?.join_url));
 
+  const invitesAlreadySent =
+    session?.status === "invited" ||
+    session?.status === "live" ||
+    (session?.participants ?? []).some((p) => p.invite_status === "sent");
+
+  const canSendInvites =
+    Boolean(session) &&
+    Boolean(session?.scheduled_at) &&
+    (session?.participants?.length ?? 0) > 0 &&
+    meetingReadyForActions &&
+    !["completed", "scored"].includes(session?.status ?? "");
+
+  const canStart =
+    trackTab === "online" &&
+    Boolean(session) &&
+    Boolean(session?.topic) &&
+    meetingReadyForActions &&
+    ["invited", "meeting_ready", "live"].includes(session?.status ?? "");
+
   const canEnd =
-    Boolean(session) && ["live", "invited", "meeting_ready"].includes(session?.status ?? "");
+    Boolean(session) &&
+    meetingReadyForActions &&
+    ["live", "invited", "meeting_ready"].includes(session?.status ?? "");
 
   return (
     <div>
@@ -655,45 +700,78 @@ function HostPageInner() {
                     {createMeetingMutation.isPending ? "Creating meeting…" : "Create Teams meeting"}
                   </button>
                 )}
-                {trackTab === "online" && (
-                  <button
-                    type="button"
-                    disabled={!canStart || startMutation.isPending}
-                    onClick={() => startMutation.mutate()}
-                    className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40 cursor-pointer"
-                  >
-                    {session.status === "live"
-                      ? "Discussion started"
-                      : startMutation.isPending
-                        ? "Starting…"
-                        : "Start discussion"}
-                  </button>
+
+                {meetingReadyForActions && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!canSendInvites || inviteMutation.isPending}
+                      onClick={() => inviteMutation.mutate()}
+                      className="px-5 py-2.5 rounded-[9px] border border-border bg-surface text-[13px] font-semibold text-text hover:bg-[#F3F6F6] disabled:opacity-40 cursor-pointer"
+                    >
+                      {inviteMutation.isPending
+                        ? "Sending…"
+                        : invitesAlreadySent
+                          ? "Re-Send Invite"
+                          : "Send Invites"}
+                    </button>
+
+                    {trackTab === "online" && (
+                      <button
+                        type="button"
+                        disabled={!canStart || startMutation.isPending || session.status === "live"}
+                        onClick={() => startMutation.mutate()}
+                        className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40 cursor-pointer"
+                      >
+                        {session.status === "live"
+                          ? "Discussion started"
+                          : startMutation.isPending
+                            ? "Starting…"
+                            : "Start discussion"}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={!canEnd || endMutation.isPending}
+                      onClick={() => endMutation.mutate()}
+                      className="px-5 py-2.5 rounded-[9px] border border-border bg-surface text-[13px] font-semibold text-brick hover:bg-brick-soft disabled:opacity-40 cursor-pointer"
+                    >
+                      {endMutation.isPending ? "Ending…" : "End discussion"}
+                    </button>
+
+                    {session.join_url && trackTab === "online" && (
+                      <a
+                        href={session.join_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-5 py-2.5 rounded-[9px] border border-border bg-surface text-[13px] font-semibold text-text hover:bg-[#F3F6F6]"
+                      >
+                        Open in Teams
+                      </a>
+                    )}
+                  </>
                 )}
-                {session.status === "draft" && trackTab === "online" && !canCreateMeeting && (
+
+                {session.status === "draft" && trackTab === "online" && (
                   <p className="w-full text-[12.5px] text-text-muted">
-                    Roster changed or meeting not ready — set schedule and participants, then Create
-                    Teams meeting before Start.
+                    Create the Teams meeting first. Then you can Send Invites, Start, and End.
                   </p>
                 )}
-                <button
-                  type="button"
-                  disabled={!canEnd || endMutation.isPending}
-                  onClick={() => endMutation.mutate()}
-                  className="px-5 py-2.5 rounded-[9px] border border-border bg-surface text-[13px] font-semibold text-brick hover:bg-brick-soft disabled:opacity-40 cursor-pointer"
-                >
-                  {endMutation.isPending ? "Ending…" : "End discussion"}
-                </button>
-                {session.join_url && trackTab === "online" && (
-                  <a
-                    href={session.join_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-5 py-2.5 rounded-[9px] border border-border bg-surface text-[13px] font-semibold text-text hover:bg-[#F3F6F6]"
-                  >
-                    Open in Teams
-                  </a>
-                )}
               </div>
+
+              {inviteNote && (
+                <div className="mb-5 rounded-[11px] border border-forest bg-forest-soft px-4 py-3 text-[13px] text-forest font-medium flex items-start justify-between gap-3">
+                  <span>{inviteNote}</span>
+                  <button
+                    type="button"
+                    onClick={() => setInviteNote(null)}
+                    className="font-semibold shrink-0"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
 
               {session.status === "live" && (
                 <div className="mb-5 rounded-[11px] border border-forest bg-forest-soft px-4 py-3 text-[13px] text-forest font-medium">
@@ -718,6 +796,19 @@ function HostPageInner() {
                         {p.application_number || p.application_id}
                       </div>
                     </div>
+                    {p.invite_status && (
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                          p.invite_status === "sent"
+                            ? "bg-forest-soft text-forest"
+                            : p.invite_status === "failed"
+                              ? "bg-brick-soft text-brick"
+                              : "bg-[#E4EDEE] text-text-muted"
+                        }`}
+                      >
+                        {p.invite_status}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

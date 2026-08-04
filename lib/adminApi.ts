@@ -504,6 +504,28 @@ export function endGdSession(sessionId: string): Promise<GdEndResponse> {
   });
 }
 
+export interface GdSendInvitesResult {
+  application_id?: string | null;
+  email?: string | null;
+  role?: string;
+  success: boolean;
+  detail?: string;
+  temp_username?: string;
+}
+
+export interface GdSendInvitesResponse {
+  session_id: string;
+  status: string;
+  results: GdSendInvitesResult[];
+}
+
+export function sendGdInvites(sessionId: string): Promise<GdSendInvitesResponse> {
+  return adminFetch<GdSendInvitesResponse>(
+    `/admin/group-discussion/sessions/${sessionId}/send-invites`,
+    { method: "POST" },
+  );
+}
+
 export interface GdProgramSettings {
   program_id: string;
   min_group_size: number;
