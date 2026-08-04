@@ -22,6 +22,7 @@ function formatWhen(iso: string | null | undefined) {
 function statusTone(status: string) {
   if (status === "live") return "bg-gold-soft text-[#8a5a12]";
   if (status === "completed" || status === "scored") return "bg-forest-soft text-forest";
+  if (status === "invited") return "bg-[#E8F0FE] text-[#1A56DB]";
   return "bg-[#E4EDEE] text-text-muted";
 }
 
@@ -175,11 +176,13 @@ function GroupBlock({
               <span className="text-[11px] text-text-muted">Drag locked</span>
             )}
           </div>
-          <div className="text-[12px] text-text-muted mt-0.5">
-            {formatWhen(session.scheduled_at)}
-            {session.professor_name ? ` · ${session.professor_name}` : ""}
-            {session.topic ? ` · ${session.topic}` : ""}
-          </div>
+                    <div className="text-[12px] text-text-muted mt-0.5">
+                      {session.track === "manual" ? "In-person" : "Online"}
+                      {" · "}
+                      {formatWhen(session.scheduled_at)}
+                      {session.professor_name ? ` · ${session.professor_name}` : ""}
+                      {session.topic ? ` · ${session.topic}` : ""}
+                    </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[12px] text-text-muted font-medium">{members.length}</span>
@@ -331,12 +334,20 @@ export function GroupDiscussionStagePanel({
     onError: (err: Error) => setError(err.message),
   });
 
-  const { onlineGroups, inPersonGroups, unassigned } = useMemo(() => {
+  const { onlineGroups, inPersonGroups, completedGroups, unassigned } = useMemo(() => {
     const sessions = sessionsQuery.data ?? [];
     const active = sessions.filter((s) =>
       ["draft", "meeting_ready", "invited", "live"].includes(s.status),
     );
+    const finished = sessions.filter((s) => ["completed", "scored"].includes(s.status));
+
     const byApp = new Map<string, GdSessionAdmin>();
+    // Prefer active assignment; finished only if not also in an active session.
+    for (const s of finished) {
+      for (const p of s.participants ?? []) {
+        byApp.set(p.application_id, s);
+      }
+    }
     for (const s of active) {
       for (const p of s.participants ?? []) {
         byApp.set(p.application_id, s);
@@ -345,12 +356,19 @@ export function GroupDiscussionStagePanel({
 
     const onlineBuckets = new Map<string, GroupBucket>();
     const inPersonBuckets = new Map<string, GroupBucket>();
+    const completedBuckets = new Map<string, GroupBucket>();
     const unassignedList: CandidateWithMatch[] = [];
 
     for (const c of candidates) {
       const session = byApp.get(c.application_id);
       if (!session) {
         unassignedList.push(c);
+        continue;
+      }
+      if (["completed", "scored"].includes(session.status)) {
+        const existing = completedBuckets.get(session.id);
+        if (existing) existing.members.push(c);
+        else completedBuckets.set(session.id, { session, members: [c] });
         continue;
       }
       const map = session.track === "manual" ? inPersonBuckets : onlineBuckets;
@@ -374,6 +392,7 @@ export function GroupDiscussionStagePanel({
     return {
       onlineGroups: sortBuckets([...onlineBuckets.values()]),
       inPersonGroups: sortBuckets([...inPersonBuckets.values()]),
+      completedGroups: sortBuckets([...completedBuckets.values()]),
       unassigned: unassignedList,
     };
   }, [candidates, sessionsQuery.data]);
@@ -420,9 +439,8 @@ export function GroupDiscussionStagePanel({
     <div className="space-y-5">
       <p className="text-[12.5px] text-text-muted">
         Drag candidates into any Online or In-person group to move them (no swap). Select multiple
-        with checkboxes, then drag. Drop onto Unassigned to remove from a group. Online groups with
-        a Teams meeting go back to draft after a roster change so the meeting can be recreated.
-        Locked after invites are sent.
+        with checkboxes, then drag. Drop onto Unassigned to remove from a group. Completed GDs stay
+        under Completed with their groups. Locked after invites are sent.
       </p>
 
       {error && (
@@ -460,6 +478,19 @@ export function GroupDiscussionStagePanel({
         onDropMove={handleMove}
         busy={busy}
       />
+      {completedGroups.length > 0 && (
+        <TrackSection
+          title="Completed"
+          sessions={completedGroups}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onOpenCandidate={onOpenCandidate}
+          onMoveToFinal={onMoveToFinal}
+          onDragIds={dragIdsFor}
+          onDropMove={handleMove}
+          busy={busy}
+        />
+      )}
 
       <div
         className={`bg-surface border border-border rounded-xl overflow-hidden ${
@@ -490,7 +521,9 @@ export function GroupDiscussionStagePanel({
             Unassigned
             <span className="text-text-muted text-[12.5px] font-sans font-normal">
               {unassigned.length} candidate{unassigned.length === 1 ? "" : "s"}
-              {unassigned.length === 0 ? " · drop here to unassign" : " · not in an active group"}
+              {unassigned.length === 0
+                ? " · drop here to unassign"
+                : " · in GD stage but not in any group"}
             </span>
           </span>
           <ChevronDownIcon
