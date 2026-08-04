@@ -15,6 +15,7 @@ import {
   previewGdPack,
   sendGdInvites,
   startGdSession,
+  reopenGdSession,
   updateGdSession,
   type GdSessionAdmin,
   type PackGroupSpec,
@@ -426,6 +427,16 @@ function HostPageInner() {
     onError: (err: Error) => setError(err.message),
   });
 
+  const reopenMutation = useMutation({
+    mutationFn: () => reopenGdSession(activeId!),
+    onSuccess: () => {
+      setError(null);
+      setInviteNote("Session reopened — back to invited / ready.");
+      invalidate();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
   const saveMutation = useMutation({
     mutationFn: () =>
       updateGdSession(activeId!, {
@@ -501,12 +512,16 @@ function HostPageInner() {
     Boolean(session) &&
     Boolean(session?.topic) &&
     meetingReadyForActions &&
-    ["invited", "meeting_ready", "live"].includes(session?.status ?? "");
+    ["invited", "meeting_ready"].includes(session?.status ?? "");
 
+  // Online: End only after Start (live). In-person: End from ready/invited/live.
   const canEnd =
     Boolean(session) &&
-    meetingReadyForActions &&
-    ["live", "invited", "meeting_ready"].includes(session?.status ?? "");
+    (trackTab === "online"
+      ? session?.status === "live"
+      : ["live", "invited", "meeting_ready"].includes(session?.status ?? ""));
+
+  const canReopen = Boolean(session) && session?.status === "completed";
 
   return (
     <div>
@@ -719,23 +734,40 @@ function HostPageInner() {
                     {trackTab === "online" && (
                       <button
                         type="button"
-                        disabled={!canStart || startMutation.isPending || session.status === "live"}
+                        disabled={!canStart || startMutation.isPending}
                         onClick={() => startMutation.mutate()}
                         className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40 cursor-pointer"
+                        title={
+                          canStart
+                            ? "Reveals the topic and starts the timer for candidates"
+                            : "Available after meeting is ready / invited"
+                        }
                       >
-                        {session.status === "live"
-                          ? "Discussion started"
-                          : startMutation.isPending
-                            ? "Starting…"
-                            : "Start discussion"}
+                        {startMutation.isPending ? "Starting…" : "Start discussion"}
                       </button>
                     )}
 
                     <button
                       type="button"
                       disabled={!canEnd || endMutation.isPending}
-                      onClick={() => endMutation.mutate()}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            trackTab === "online"
+                              ? "End this live discussion? Candidates will see it as completed."
+                              : "Mark this In-person GD as completed?",
+                          )
+                        ) {
+                          return;
+                        }
+                        endMutation.mutate();
+                      }}
                       className="px-5 py-2.5 rounded-[9px] border border-border bg-surface text-[13px] font-semibold text-brick hover:bg-brick-soft disabled:opacity-40 cursor-pointer"
+                      title={
+                        trackTab === "online" && session.status !== "live"
+                          ? "Start the discussion first, then End"
+                          : undefined
+                      }
                     >
                       {endMutation.isPending ? "Ending…" : "End discussion"}
                     </button>
@@ -751,6 +783,25 @@ function HostPageInner() {
                       </a>
                     )}
                   </>
+                )}
+
+                {canReopen && (
+                  <button
+                    type="button"
+                    disabled={reopenMutation.isPending}
+                    onClick={() => reopenMutation.mutate()}
+                    className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40 cursor-pointer"
+                  >
+                    {reopenMutation.isPending ? "Reopening…" : "Reopen session"}
+                  </button>
+                )}
+
+                {session.status === "invited" && trackTab === "online" && (
+                  <p className="w-full text-[12.5px] text-text-muted">
+                    Invites sent. Use <span className="font-semibold">Start discussion</span> when
+                    the GD begins (reveals topic + timer).{" "}
+                    <span className="font-semibold">End</span> unlocks only after Start.
+                  </p>
                 )}
 
                 {session.status === "draft" && trackTab === "online" && (

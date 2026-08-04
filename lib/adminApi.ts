@@ -504,6 +504,12 @@ export function endGdSession(sessionId: string): Promise<GdEndResponse> {
   });
 }
 
+export function reopenGdSession(sessionId: string): Promise<GdSessionAdmin> {
+  return adminFetch<GdSessionAdmin>(`/admin/group-discussion/sessions/${sessionId}/reopen`, {
+    method: "POST",
+  });
+}
+
 export interface GdSendInvitesResult {
   application_id?: string | null;
   email?: string | null;
