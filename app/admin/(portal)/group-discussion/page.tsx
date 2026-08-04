@@ -8,6 +8,7 @@ import {
   endGdSession,
   getGdSession,
   getGdSettings,
+  listCandidates,
   listGdSessions,
   packGdSessions,
   previewGdPack,
@@ -20,7 +21,12 @@ import {
 import { PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 
+/** API track value stays `manual`; UI label is In-person. */
 type TrackTab = "online" | "manual";
+
+function trackLabel(track: TrackTab | string) {
+  return track === "online" ? "Online" : "In-person";
+}
 
 type DraftGroup = {
   label: string;
@@ -72,6 +78,17 @@ function PackWizard({
     queryKey: ["gd-settings", PROGRAM_ID],
     queryFn: () => getGdSettings(PROGRAM_ID),
   });
+  const candidatesQuery = useQuery({
+    queryKey: ["candidates", PROGRAM_ID],
+    queryFn: () =>
+      listCandidates({
+        program_id: PROGRAM_ID,
+        sort_by: "preference_match_score",
+        order: "desc",
+        limit: 500,
+      }),
+    enabled: track === "manual",
+  });
   const [drafts, setDrafts] = useState<DraftGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [seed, setSeed] = useState(() => Date.now());
@@ -91,7 +108,7 @@ function PackWizard({
       const when = toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000));
       setDrafts(
         preview.groups.map((g: PackPreviewGroup, i) => ({
-          label: `GD-${track === "online" ? "Online" : "Manual"}-${i + 1}`,
+          label: `GD-${trackLabel(track)}-${i + 1}`,
           scheduled_at: when,
           duration_minutes: duration,
           professor_name: "",
@@ -115,25 +132,33 @@ function PackWizard({
       previewMutation.mutate();
       return;
     }
+    // In-person: one group with selected people — resolve names from candidates list.
+    if (candidatesQuery.isLoading || !candidatesQuery.data) return;
+    const byId = new Map(
+      candidatesQuery.data.map((c) => [c.application_id, c] as const),
+    );
     const duration = settingsQuery.data.default_duration_minutes;
     setDrafts([
       {
-        label: "GD-Manual-1",
+        label: "GD-In-person-1",
         scheduled_at: toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000)),
         duration_minutes: duration,
         professor_name: "",
         professor_email: "",
         topic: "",
         application_ids: applicationIds,
-        applicants: applicationIds.map((id) => ({
-          application_id: id,
-          applicant_name: null,
-          application_number: null,
-        })),
+        applicants: applicationIds.map((id) => {
+          const c = byId.get(id);
+          return {
+            application_id: id,
+            applicant_name: c?.applicant_name ?? null,
+            application_number: null,
+          };
+        }),
       },
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when drafts cleared / settings load
-  }, [settingsQuery.data, track, applicationIds, drafts, seed]);
+  }, [settingsQuery.data, track, applicationIds, drafts, seed, candidatesQuery.data, candidatesQuery.isLoading]);
 
   const packMutation = useMutation({
     mutationFn: (groups: PackGroupSpec[]) =>
@@ -185,11 +210,11 @@ function PackWizard({
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
           <h2 className="font-serif text-[20px] font-semibold text-text">
-            Create {track === "online" ? "Online" : "Manual"} groups
+            Create {trackLabel(track)} groups
           </h2>
           <p className="text-[13px] text-text-muted mt-1">
             {applicationIds.length} candidates selected
-            {settingsQuery.data
+            {track === "online" && settingsQuery.data
               ? ` · pack size ${settingsQuery.data.min_group_size}–${settingsQuery.data.max_group_size}`
               : ""}
           </p>
@@ -232,7 +257,9 @@ function PackWizard({
         </div>
       )}
 
-      {(previewMutation.isPending || settingsQuery.isLoading) && (
+      {(previewMutation.isPending ||
+        settingsQuery.isLoading ||
+        (track === "manual" && candidatesQuery.isLoading)) && (
         <div className="text-[13px] text-text-muted">Preparing groups…</div>
       )}
 
@@ -288,7 +315,7 @@ function PackWizard({
           <ul className="text-[12.5px] text-text space-y-0.5">
             {g.applicants.map((a) => (
               <li key={a.application_id}>
-                {a.applicant_name || a.application_id.slice(0, 8)}
+                {a.applicant_name || "Unnamed applicant"}
                 {a.application_number ? ` · ${a.application_number}` : ""}
               </li>
             ))}
@@ -423,7 +450,7 @@ function HostPageInner() {
     <div>
       <AdminTopbar
         title="Group Discussion"
-        subtitle={`${PROGRAM_LABEL} · Online & Manual groups`}
+        subtitle={`${PROGRAM_LABEL} · Online & In-person groups`}
       >
         <Link
           href="/admin/preferences"
@@ -465,7 +492,7 @@ function HostPageInner() {
               trackTab === t ? "bg-ink text-white" : "border border-border bg-surface text-text"
             }`}
           >
-            {t === "online" ? "Online / Virtual" : "Manual / In-person"}
+            {t === "online" ? "Online / Virtual" : "In-person"}
           </button>
         ))}
       </div>
@@ -473,7 +500,7 @@ function HostPageInner() {
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
         <div className="rounded-[14px] border border-border bg-surface overflow-hidden">
           <div className="px-4 py-3 border-b border-border text-[12px] font-semibold text-text-muted uppercase tracking-wide">
-            {trackTab === "online" ? "Online" : "Manual"} sessions
+            {trackLabel(trackTab)} sessions
           </div>
           {listQuery.isLoading && (
             <div className="px-4 py-6 text-[13px] text-text-muted">Loading…</div>
@@ -504,7 +531,8 @@ function HostPageInner() {
             ))}
             {!listQuery.isLoading && sessions.length === 0 && (
               <li className="px-4 py-6 text-[13px] text-text-muted">
-                No {trackTab} sessions yet. Select candidates on Campus Interview and pack groups.
+                No {trackLabel(trackTab).toLowerCase()} sessions yet. Select candidates on Campus
+                Interview and pack groups.
               </li>
             )}
           </ul>

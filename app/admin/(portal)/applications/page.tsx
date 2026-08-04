@@ -33,6 +33,7 @@ import { ScoreGauge } from "@/components/admin/ScoreGauge";
 import { Table, type TableColumn } from "@/components/admin/Table";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { CandidateDrawer } from "@/components/admin/CandidateDrawer";
+import { GroupDiscussionStagePanel } from "@/components/admin/GroupDiscussionStagePanel";
 import { ChevronDownIcon, CloseIcon, SearchIcon, SlidersIcon } from "@/components/admin/icons";
 
 type StageTabKey =
@@ -847,7 +848,7 @@ export default function ApplicationsPage() {
                 }}
                 className="px-3.5 py-2 rounded-lg border border-border bg-surface text-[12.5px] font-semibold text-text hover:bg-[#F3F6F6]"
               >
-                Pack Manual GD ({selectedIds.size})
+                Pack In-person GD ({selectedIds.size})
               </button>
             </>
           )}
@@ -1004,7 +1005,15 @@ export default function ApplicationsPage() {
         </div>
       )}
 
-      {!isLoading && !isError && tab !== "screening" && (
+      {!isLoading && !isError && tab === "group_discussion" && (
+        <GroupDiscussionStagePanel
+          candidates={stageRows}
+          onOpenCandidate={(id) => setDrawerId(id)}
+          onMoveToFinal={(c) => setPendingAction({ type: "move_to_final", candidate: c })}
+        />
+      )}
+
+      {!isLoading && !isError && tab !== "screening" && tab !== "group_discussion" && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <Table
             columns={stageColumns}

@@ -381,7 +381,7 @@ function GdSettingsSection() {
     <div className="bg-surface border border-border rounded-xl p-5 mt-6">
       <h2 className="font-serif text-base font-bold text-text mb-1">Group Discussion</h2>
       <p className="text-[12.5px] text-text-muted mb-4">
-        Used when packing Campus Interview candidates into Online groups. Manual groups ignore
+        Used when packing Campus Interview candidates into Online groups. In-person groups ignore
         auto-pack and use the candidates you assign.
       </p>
       {error && (
