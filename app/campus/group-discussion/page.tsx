@@ -140,22 +140,60 @@ function GdContent({ applicationId }: { applicationId: string }) {
           </div>
 
           {!joined ? (
-            <button
-              type="button"
-              onClick={async () => {
-                setJoinError(null);
-                setCallPage(null);
-                try {
-                  await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-                } catch {
-                  // Still allow join; in-call controls can request again.
-                }
-                setJoined(true);
-              }}
-              className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark cursor-pointer"
-            >
-              Join discussion
-            </button>
+            <>
+              <div className="rounded-[14px] border border-border bg-surface px-[24px] py-[22px] mb-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-3">
+                  Important etiquette
+                </div>
+                <ul className="space-y-2.5 text-[13.5px] text-text leading-relaxed list-disc pl-5">
+                  <li>
+                    Join from a quiet, well-lit place with a stable internet connection.
+                  </li>
+                  <li>
+                    Keep your <span className="font-semibold">camera on</span> and face visible
+                    throughout the discussion.
+                  </li>
+                  <li>
+                    Mute your microphone when you are not speaking to reduce background noise.
+                  </li>
+                  <li>
+                    Speak clearly, one at a time — do not interrupt or talk over others.
+                  </li>
+                  <li>
+                    Be respectful and professional; listen actively and build on others&apos;
+                    points.
+                  </li>
+                  <li>
+                    Stay on topic once the moderator reveals it; avoid side conversations or chat
+                    distractions.
+                  </li>
+                  <li>
+                    Do not record, screenshot, or share the discussion outside this session.
+                  </li>
+                  <li>
+                    Use <span className="font-semibold">Raise hand</span> if you wish to speak and
+                    wait to be acknowledged.
+                  </li>
+                </ul>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setJoinError(null);
+                  setCallPage(null);
+                  try {
+                    await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                  } catch {
+                    // Still allow join; in-call controls can request again.
+                  }
+                  setJoined(true);
+                }}
+                className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark cursor-pointer"
+              >
+                Join discussion
+              </button>
+            </>
           ) : joinQuery.isLoading ? (
             <div className="text-sm text-text-muted">Joining…</div>
           ) : joinQuery.isError ? (
