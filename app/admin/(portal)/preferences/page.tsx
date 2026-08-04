@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listPreferenceConfigs, listPreferenceMatchResults, replacePreferenceConfigs } from "@/lib/adminApi";
+import { listPreferenceConfigs, listPreferenceMatchResults, replacePreferenceConfigs, getGdSettings, updateGdSettings } from "@/lib/adminApi";
 import { PROGRAM_ID } from "@/lib/adminConfig";
 import { simulateImpact, type HypotheticalPreferenceConfig } from "@/lib/adminMatching";
 import type { PreferenceConfigResponse } from "@/lib/adminTypes";
@@ -329,6 +329,8 @@ export default function PreferencesPage() {
         </>
       )}
 
+      <GdSettingsSection />
+
       <ConfirmDialog
         open={confirmOpen}
         title="Save screening preferences?"
@@ -338,6 +340,98 @@ export default function PreferencesPage() {
         onConfirm={() => saveMutation.mutate()}
         onCancel={() => setConfirmOpen(false)}
       />
+    </div>
+  );
+}
+
+function GdSettingsSection() {
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({
+    queryKey: ["gd-settings", PROGRAM_ID],
+    queryFn: () => getGdSettings(PROGRAM_ID),
+  });
+  const [minSize, setMinSize] = useState(5);
+  const [maxSize, setMaxSize] = useState(7);
+  const [duration, setDuration] = useState(30);
+  const [synced, setSynced] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (settingsQuery.data && !synced) {
+    setMinSize(settingsQuery.data.min_group_size);
+    setMaxSize(settingsQuery.data.max_group_size);
+    setDuration(settingsQuery.data.default_duration_minutes);
+    setSynced(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateGdSettings(PROGRAM_ID, {
+        min_group_size: minSize,
+        max_group_size: maxSize,
+        default_duration_minutes: duration,
+      }),
+    onSuccess: () => {
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ["gd-settings", PROGRAM_ID] });
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5 mt-6">
+      <h2 className="font-serif text-base font-bold text-text mb-1">Group Discussion</h2>
+      <p className="text-[12.5px] text-text-muted mb-4">
+        Used when packing Campus Interview candidates into Online groups. Manual groups ignore
+        auto-pack and use the candidates you assign.
+      </p>
+      {error && (
+        <div className="mb-3 rounded-[11px] border border-brick bg-brick-soft px-3 py-2 text-[12.5px] text-brick">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <label className="text-[12px] font-semibold text-text-muted">
+          Min group size
+          <input
+            type="number"
+            min={2}
+            max={12}
+            value={minSize}
+            onChange={(e) => setMinSize(Number(e.target.value))}
+            className="mt-1 w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-[13px] text-text"
+          />
+        </label>
+        <label className="text-[12px] font-semibold text-text-muted">
+          Max group size
+          <input
+            type="number"
+            min={2}
+            max={12}
+            value={maxSize}
+            onChange={(e) => setMaxSize(Number(e.target.value))}
+            className="mt-1 w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-[13px] text-text"
+          />
+        </label>
+        <label className="text-[12px] font-semibold text-text-muted">
+          Default duration (min)
+          <input
+            type="number"
+            min={15}
+            max={240}
+            value={duration}
+            onChange={(e) => setDuration(Number(e.target.value))}
+            className="mt-1 w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-[13px] text-text"
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        disabled={saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+        className="px-4 py-2 rounded-lg bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40"
+      >
+        {saveMutation.isPending ? "Saving…" : "Save GD settings"}
+      </button>
     </div>
   );
 }

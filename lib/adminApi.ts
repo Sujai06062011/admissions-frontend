@@ -503,3 +503,106 @@ export function endGdSession(sessionId: string): Promise<GdEndResponse> {
     body: "{}",
   });
 }
+
+export interface GdProgramSettings {
+  program_id: string;
+  min_group_size: number;
+  max_group_size: number;
+  default_duration_minutes: number;
+}
+
+export function getGdSettings(programId: string): Promise<GdProgramSettings> {
+  return adminFetch<GdProgramSettings>(
+    `/admin/group-discussion/settings?program_id=${encodeURIComponent(programId)}`,
+  );
+}
+
+export function updateGdSettings(
+  programId: string,
+  input: Omit<GdProgramSettings, "program_id">,
+): Promise<GdProgramSettings> {
+  return adminFetch<GdProgramSettings>(
+    `/admin/group-discussion/settings?program_id=${encodeURIComponent(programId)}`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+export interface GdEligibleCandidate {
+  application_id: string;
+  applicant_name: string | null;
+  applicant_email: string | null;
+  application_number: string | null;
+  composite_score: number | null;
+  gender: string | null;
+  test_a_score: number | null;
+  test_b_score: number | null;
+}
+
+export interface PackPreviewGroup {
+  index: number;
+  size: number;
+  application_ids: string[];
+  applicants: GdEligibleCandidate[];
+}
+
+export interface PackPreviewResponse {
+  min_size: number;
+  max_size: number;
+  total_candidates: number;
+  groups: PackPreviewGroup[];
+}
+
+export function previewGdPack(input: {
+  program_id: string;
+  application_ids: string[];
+  min_size?: number;
+  max_size?: number;
+  seed?: number;
+}): Promise<PackPreviewResponse> {
+  return adminFetch<PackPreviewResponse>("/admin/group-discussion/pack/preview", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export interface PackGroupSpec {
+  label: string;
+  scheduled_at?: string | null;
+  duration_minutes?: number | null;
+  professor_name?: string | null;
+  professor_email?: string | null;
+  topic?: string | null;
+  application_ids: string[];
+}
+
+export function packGdSessions(input: {
+  program_id: string;
+  track: "online" | "manual";
+  groups: PackGroupSpec[];
+  auto_create_meetings?: boolean;
+  move_status?: boolean;
+}): Promise<{ sessions: GdSessionAdmin[] }> {
+  return adminFetch<{ sessions: GdSessionAdmin[] }>("/admin/group-discussion/pack", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateGdSession(
+  sessionId: string,
+  input: {
+    label?: string | null;
+    scheduled_at?: string | null;
+    duration_minutes?: number | null;
+    professor_email?: string | null;
+    professor_name?: string | null;
+    topic?: string | null;
+    join_opens_minutes_before?: number | null;
+    track?: "online" | "manual" | null;
+  },
+): Promise<GdSessionAdmin> {
+  return adminFetch<GdSessionAdmin>(`/admin/group-discussion/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}

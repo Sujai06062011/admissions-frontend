@@ -1,17 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   endGdSession,
   getGdSession,
+  getGdSettings,
   listGdSessions,
+  packGdSessions,
+  previewGdPack,
   startGdSession,
+  updateGdSession,
   type GdSessionAdmin,
+  type PackGroupSpec,
+  type PackPreviewGroup,
 } from "@/lib/adminApi";
 import { PROGRAM_ID, PROGRAM_LABEL } from "@/lib/adminConfig";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
+
+type TrackTab = "online" | "manual";
+
+type DraftGroup = {
+  label: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  professor_name: string;
+  professor_email: string;
+  topic: string;
+  application_ids: string[];
+  applicants: { application_id: string; applicant_name: string | null; application_number: string | null }[];
+};
 
 function formatWhen(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -25,10 +45,289 @@ function statusTone(status: string) {
   return "bg-[#E4EDEE] text-text-muted";
 }
 
-export default function GroupDiscussionHostPage() {
+function toDatetimeLocalValue(d = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function PackWizard({
+  track,
+  applicationIds,
+  onDone,
+  onCancel,
+}: {
+  track: TrackTab;
+  applicationIds: string[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const settingsQuery = useQuery({
+    queryKey: ["gd-settings", PROGRAM_ID],
+    queryFn: () => getGdSettings(PROGRAM_ID),
+  });
+  const [drafts, setDrafts] = useState<DraftGroup[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [seed, setSeed] = useState(() => Date.now());
+
+  const previewMutation = useMutation({
+    mutationFn: () =>
+      previewGdPack({
+        program_id: PROGRAM_ID,
+        application_ids: applicationIds,
+        min_size: settingsQuery.data?.min_group_size,
+        max_size: settingsQuery.data?.max_group_size,
+        seed,
+      }),
+    onSuccess: (preview) => {
+      setError(null);
+      const duration = settingsQuery.data?.default_duration_minutes ?? 30;
+      const when = toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000));
+      setDrafts(
+        preview.groups.map((g: PackPreviewGroup, i) => ({
+          label: `GD-${track === "online" ? "Online" : "Manual"}-${i + 1}`,
+          scheduled_at: when,
+          duration_minutes: duration,
+          professor_name: "",
+          professor_email: "",
+          topic: "",
+          application_ids: g.application_ids,
+          applicants: g.applicants.map((a) => ({
+            application_id: a.application_id,
+            applicant_name: a.applicant_name,
+            application_number: a.application_number,
+          })),
+        })),
+      );
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  useEffect(() => {
+    if (!settingsQuery.data || drafts) return;
+    if (track === "online") {
+      previewMutation.mutate();
+      return;
+    }
+    const duration = settingsQuery.data.default_duration_minutes;
+    setDrafts([
+      {
+        label: "GD-Manual-1",
+        scheduled_at: toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000)),
+        duration_minutes: duration,
+        professor_name: "",
+        professor_email: "",
+        topic: "",
+        application_ids: applicationIds,
+        applicants: applicationIds.map((id) => ({
+          application_id: id,
+          applicant_name: null,
+          application_number: null,
+        })),
+      },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when drafts cleared / settings load
+  }, [settingsQuery.data, track, applicationIds, drafts, seed]);
+
+  const packMutation = useMutation({
+    mutationFn: (groups: PackGroupSpec[]) =>
+      packGdSessions({
+        program_id: PROGRAM_ID,
+        track,
+        groups,
+        auto_create_meetings: track === "online",
+        move_status: true,
+      }),
+    onSuccess: () => onDone(),
+    onError: (err: Error) => setError(err.message),
+  });
+
+  function updateDraft(index: number, patch: Partial<DraftGroup>) {
+    setDrafts((prev) => {
+      if (!prev) return prev;
+      return prev.map((g, i) => (i === index ? { ...g, ...patch } : g));
+    });
+  }
+
+  function submit() {
+    if (!drafts?.length) return;
+    for (const g of drafts) {
+      if (!g.label.trim()) {
+        setError("Each group needs a name.");
+        return;
+      }
+      if (!g.topic.trim()) {
+        setError("Each group needs a topic.");
+        return;
+      }
+    }
+    packMutation.mutate(
+      drafts.map((g) => ({
+        label: g.label.trim(),
+        scheduled_at: fromDatetimeLocalValue(g.scheduled_at),
+        duration_minutes: g.duration_minutes,
+        professor_name: g.professor_name.trim() || null,
+        professor_email: g.professor_email.trim() || null,
+        topic: g.topic.trim(),
+        application_ids: g.application_ids,
+      })),
+    );
+  }
+
+  return (
+    <div className="rounded-[14px] border border-border bg-surface px-6 py-5 mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="font-serif text-[20px] font-semibold text-text">
+            Create {track === "online" ? "Online" : "Manual"} groups
+          </h2>
+          <p className="text-[13px] text-text-muted mt-1">
+            {applicationIds.length} candidates selected
+            {settingsQuery.data
+              ? ` · pack size ${settingsQuery.data.min_group_size}–${settingsQuery.data.max_group_size}`
+              : ""}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {track === "online" && (
+            <button
+              type="button"
+              onClick={() => {
+                setDrafts(null);
+                setSeed(Date.now());
+                previewMutation.reset();
+              }}
+              className="px-3.5 py-2 rounded-[9px] border border-border text-[12.5px] font-semibold"
+            >
+              Re-shuffle
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3.5 py-2 rounded-[9px] border border-border text-[12.5px] font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!drafts?.length || packMutation.isPending}
+            onClick={submit}
+            className="px-4 py-2 rounded-[9px] bg-ink text-white text-[12.5px] font-semibold disabled:opacity-40"
+          >
+            {packMutation.isPending ? "Creating…" : "Create groups"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-[11px] border border-brick bg-brick-soft px-4 py-3 text-[13px] text-brick font-medium">
+          {error}
+        </div>
+      )}
+
+      {(previewMutation.isPending || settingsQuery.isLoading) && (
+        <div className="text-[13px] text-text-muted">Preparing groups…</div>
+      )}
+
+      {drafts?.map((g, index) => (
+        <div key={index} className="rounded-[11px] border border-border bg-bg px-4 py-4 mb-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <label className="text-[12px] font-semibold text-text-muted">
+              Group name
+              <input
+                value={g.label}
+                onChange={(e) => updateDraft(index, { label: e.target.value })}
+                className="mt-1 w-full rounded-[8px] border border-border bg-surface px-3 py-2 text-[13px] text-text"
+              />
+            </label>
+            <label className="text-[12px] font-semibold text-text-muted">
+              Date & time
+              <input
+                type="datetime-local"
+                value={g.scheduled_at}
+                onChange={(e) => updateDraft(index, { scheduled_at: e.target.value })}
+                className="mt-1 w-full rounded-[8px] border border-border bg-surface px-3 py-2 text-[13px] text-text"
+              />
+            </label>
+            <label className="text-[12px] font-semibold text-text-muted">
+              Moderator name
+              <input
+                value={g.professor_name}
+                onChange={(e) => updateDraft(index, { professor_name: e.target.value })}
+                className="mt-1 w-full rounded-[8px] border border-border bg-surface px-3 py-2 text-[13px] text-text"
+              />
+            </label>
+            <label className="text-[12px] font-semibold text-text-muted">
+              Moderator email
+              <input
+                type="email"
+                value={g.professor_email}
+                onChange={(e) => updateDraft(index, { professor_email: e.target.value })}
+                className="mt-1 w-full rounded-[8px] border border-border bg-surface px-3 py-2 text-[13px] text-text"
+              />
+            </label>
+          </div>
+          <label className="text-[12px] font-semibold text-text-muted block mb-3">
+            Topic
+            <input
+              value={g.topic}
+              onChange={(e) => updateDraft(index, { topic: e.target.value })}
+              className="mt-1 w-full rounded-[8px] border border-border bg-surface px-3 py-2 text-[13px] text-text"
+            />
+          </label>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">
+            Candidates ({g.application_ids.length})
+          </div>
+          <ul className="text-[12.5px] text-text space-y-0.5">
+            {g.applicants.map((a) => (
+              <li key={a.application_id}>
+                {a.applicant_name || a.application_id.slice(0, 8)}
+                {a.application_number ? ` · ${a.application_number}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HostPageInner() {
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const [trackTab, setTrackTab] = useState<TrackTab>("online");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    label: "",
+    scheduled_at: "",
+    professor_name: "",
+    professor_email: "",
+    topic: "",
+  });
+
+  const packIds = useMemo(() => {
+    const raw = searchParams.get("ids");
+    if (!raw) return [] as string[];
+    return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  }, [searchParams]);
+  const packTrack = (searchParams.get("track") as TrackTab | null) ?? "online";
+  const [wizardOpen, setWizardOpen] = useState(packIds.length > 0);
+
+  useEffect(() => {
+    if (packIds.length > 0) {
+      setTrackTab(packTrack === "manual" ? "manual" : "online");
+      setWizardOpen(true);
+    }
+  }, [packIds, packTrack]);
 
   const listQuery = useQuery({
     queryKey: ["gd-sessions", PROGRAM_ID],
@@ -37,16 +336,16 @@ export default function GroupDiscussionHostPage() {
   });
 
   const sessions = useMemo(() => {
-    const rows = [...(listQuery.data ?? [])];
+    const rows = [...(listQuery.data ?? [])].filter((s) => s.track === trackTab);
     rows.sort((a, b) => {
       const at = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
       const bt = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
       return bt - at;
     });
     return rows;
-  }, [listQuery.data]);
+  }, [listQuery.data, trackTab]);
 
-  const activeId = selectedId ?? sessions[0]?.id ?? null;
+  const activeId = selectedId && sessions.some((s) => s.id === selectedId) ? selectedId : sessions[0]?.id ?? null;
 
   const detailQuery = useQuery({
     queryKey: ["gd-session", activeId],
@@ -57,11 +356,24 @@ export default function GroupDiscussionHostPage() {
 
   const session: GdSessionAdmin | undefined = detailQuery.data;
 
+  useEffect(() => {
+    if (!session) return;
+    setEditForm({
+      label: session.label || "",
+      scheduled_at: session.scheduled_at
+        ? toDatetimeLocalValue(new Date(session.scheduled_at))
+        : "",
+      professor_name: session.professor_name || "",
+      professor_email: session.professor_email || "",
+      topic: session.topic || "",
+    });
+    setEditing(false);
+  }, [session?.id]);
+
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ["gd-sessions", PROGRAM_ID] });
-    if (activeId) {
-      void queryClient.invalidateQueries({ queryKey: ["gd-session", activeId] });
-    }
+    if (activeId) void queryClient.invalidateQueries({ queryKey: ["gd-session", activeId] });
+    void queryClient.invalidateQueries({ queryKey: ["candidates", PROGRAM_ID] });
   }
 
   const startMutation = useMutation({
@@ -82,11 +394,27 @@ export default function GroupDiscussionHostPage() {
     onError: (err: Error) => setError(err.message),
   });
 
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateGdSession(activeId!, {
+        label: editForm.label.trim() || null,
+        scheduled_at: fromDatetimeLocalValue(editForm.scheduled_at),
+        professor_name: editForm.professor_name.trim() || null,
+        professor_email: editForm.professor_email.trim() || null,
+        topic: editForm.topic.trim() || null,
+      }),
+    onSuccess: () => {
+      setError(null);
+      setEditing(false);
+      invalidate();
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
   const canStart =
     Boolean(session) &&
     Boolean(session?.topic) &&
-    ["invited", "meeting_ready", "live"].includes(session?.status ?? "") &&
-    session?.status !== "live";
+    ["invited", "meeting_ready"].includes(session?.status ?? "");
 
   const canEnd =
     Boolean(session) && ["live", "invited", "meeting_ready"].includes(session?.status ?? "");
@@ -95,8 +423,15 @@ export default function GroupDiscussionHostPage() {
     <div>
       <AdminTopbar
         title="Group Discussion"
-        subtitle={`${PROGRAM_LABEL} · Moderator host controls`}
-      />
+        subtitle={`${PROGRAM_LABEL} · Online & Manual groups`}
+      >
+        <Link
+          href="/admin/preferences"
+          className="px-3.5 py-2 rounded-lg border border-border bg-surface text-[12.5px] font-semibold text-text hover:bg-[#F3F6F6]"
+        >
+          GD settings
+        </Link>
+      </AdminTopbar>
 
       {error && (
         <div className="mb-4 rounded-[11px] border border-brick bg-brick-soft px-4 py-3 text-[13px] text-brick font-medium">
@@ -104,16 +439,44 @@ export default function GroupDiscussionHostPage() {
         </div>
       )}
 
+      {wizardOpen && packIds.length > 0 && (
+        <PackWizard
+          track={packTrack === "manual" ? "manual" : "online"}
+          applicationIds={packIds}
+          onCancel={() => setWizardOpen(false)}
+          onDone={() => {
+            setWizardOpen(false);
+            invalidate();
+            window.history.replaceState({}, "", "/admin/group-discussion");
+          }}
+        />
+      )}
+
+      <div className="flex gap-2 mb-4">
+        {(["online", "manual"] as TrackTab[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => {
+              setTrackTab(t);
+              setSelectedId(null);
+            }}
+            className={`px-4 py-2 rounded-[9px] text-[13px] font-semibold ${
+              trackTab === t ? "bg-ink text-white" : "border border-border bg-surface text-text"
+            }`}
+          >
+            {t === "online" ? "Online / Virtual" : "Manual / In-person"}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
         <div className="rounded-[14px] border border-border bg-surface overflow-hidden">
           <div className="px-4 py-3 border-b border-border text-[12px] font-semibold text-text-muted uppercase tracking-wide">
-            Sessions
+            {trackTab === "online" ? "Online" : "Manual"} sessions
           </div>
           {listQuery.isLoading && (
             <div className="px-4 py-6 text-[13px] text-text-muted">Loading…</div>
-          )}
-          {listQuery.isError && (
-            <div className="px-4 py-6 text-[13px] text-brick">Could not load sessions.</div>
           )}
           <ul className="max-h-[70vh] overflow-y-auto">
             {sessions.map((s) => (
@@ -140,14 +503,16 @@ export default function GroupDiscussionHostPage() {
               </li>
             ))}
             {!listQuery.isLoading && sessions.length === 0 && (
-              <li className="px-4 py-6 text-[13px] text-text-muted">No GD sessions yet.</li>
+              <li className="px-4 py-6 text-[13px] text-text-muted">
+                No {trackTab} sessions yet. Select candidates on Campus Interview and pack groups.
+              </li>
             )}
           </ul>
         </div>
 
         <div className="rounded-[14px] border border-border bg-surface px-6 py-5">
           {!session ? (
-            <div className="text-[13.5px] text-text-muted">Select a session to host.</div>
+            <div className="text-[13.5px] text-text-muted">Select a session to host or edit.</div>
           ) : (
             <>
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -160,39 +525,95 @@ export default function GroupDiscussionHostPage() {
                     {session.participants?.length ?? 0} candidates
                   </p>
                 </div>
-                <span
-                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusTone(session.status)}`}
-                >
-                  {session.status}
-                </span>
-              </div>
-
-              <div className="rounded-[11px] border border-border bg-bg px-4 py-3 mb-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">
-                  Topic (shown to candidates after Start)
-                </div>
-                <div className="font-serif text-[16px] font-semibold text-text">
-                  {session.topic || (
-                    <span className="text-brick font-medium text-[13.5px]">
-                      No topic set — set topic via API/admin before starting.
-                    </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusTone(session.status)}`}
+                  >
+                    {session.status}
+                  </span>
+                  {!editing && session.status !== "completed" && session.status !== "scored" && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
+                    >
+                      Edit
+                    </button>
                   )}
                 </div>
               </div>
 
+              {editing ? (
+                <div className="rounded-[11px] border border-border bg-bg px-4 py-4 mb-4 space-y-3">
+                  {(
+                    [
+                      ["label", "Group name"],
+                      ["scheduled_at", "Date & time"],
+                      ["professor_name", "Moderator name"],
+                      ["professor_email", "Moderator email"],
+                      ["topic", "Topic"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="block text-[12px] font-semibold text-text-muted">
+                      {label}
+                      <input
+                        type={key === "scheduled_at" ? "datetime-local" : key === "professor_email" ? "email" : "text"}
+                        value={editForm[key]}
+                        onChange={(e) => setEditForm((f) => ({ ...f, [key]: e.target.value }))}
+                        className="mt-1 w-full rounded-[8px] border border-border bg-surface px-3 py-2 text-[13px] text-text"
+                      />
+                    </label>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={saveMutation.isPending}
+                      onClick={() => saveMutation.mutate()}
+                      className="px-4 py-2 rounded-[9px] bg-ink text-white text-[12.5px] font-semibold disabled:opacity-40"
+                    >
+                      {saveMutation.isPending ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(false)}
+                      className="px-4 py-2 rounded-[9px] border border-border text-[12.5px] font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-[11px] border border-border bg-bg px-4 py-3 mb-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-1">
+                    Topic
+                  </div>
+                  <div className="font-serif text-[16px] font-semibold text-text mb-2">
+                    {session.topic || (
+                      <span className="text-brick font-medium text-[13.5px]">No topic set</span>
+                    )}
+                  </div>
+                  <div className="text-[12.5px] text-text-muted">
+                    Moderator: {session.professor_name || "—"}
+                    {session.professor_email ? ` · ${session.professor_email}` : ""}
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-3 mb-5">
-                <button
-                  type="button"
-                  disabled={!canStart || startMutation.isPending}
-                  onClick={() => startMutation.mutate()}
-                  className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40 cursor-pointer"
-                >
-                  {session.status === "live"
-                    ? "Discussion started"
-                    : startMutation.isPending
-                      ? "Starting…"
-                      : "Start discussion"}
-                </button>
+                {trackTab === "online" && (
+                  <button
+                    type="button"
+                    disabled={!canStart || startMutation.isPending}
+                    onClick={() => startMutation.mutate()}
+                    className="px-5 py-2.5 rounded-[9px] bg-ink text-white text-[13px] font-semibold hover:bg-ink-dark disabled:opacity-40 cursor-pointer"
+                  >
+                    {session.status === "live"
+                      ? "Discussion started"
+                      : startMutation.isPending
+                        ? "Starting…"
+                        : "Start discussion"}
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={!canEnd || endMutation.isPending}
@@ -201,7 +622,7 @@ export default function GroupDiscussionHostPage() {
                 >
                   {endMutation.isPending ? "Ending…" : "End discussion"}
                 </button>
-                {session.join_url && (
+                {session.join_url && trackTab === "online" && (
                   <a
                     href={session.join_url}
                     target="_blank"
@@ -211,12 +632,6 @@ export default function GroupDiscussionHostPage() {
                     Open in Teams
                   </a>
                 )}
-                <Link
-                  href={`/campus/group-discussion?session=${session.id}`}
-                  className="px-5 py-2.5 rounded-[9px] border border-border bg-surface text-[13px] font-semibold text-text hover:bg-[#F3F6F6]"
-                >
-                  Candidate page link
-                </Link>
               </div>
 
               {session.status === "live" && (
@@ -230,37 +645,33 @@ export default function GroupDiscussionHostPage() {
               </div>
               <ul className="divide-y divide-border rounded-[11px] border border-border overflow-hidden">
                 {(session.participants ?? []).map((p) => (
-                  <li key={p.id} className="px-4 py-3 flex items-center justify-between gap-3 bg-surface">
+                  <li
+                    key={p.id}
+                    className="px-4 py-3 flex items-center justify-between gap-3 bg-surface"
+                  >
                     <div>
                       <div className="text-[13.5px] font-semibold text-text">
                         {p.applicant_name || "Candidate"}
                       </div>
                       <div className="text-[12px] text-text-muted">
                         {p.application_number || p.application_id}
-                        {p.applicant_email ? ` · ${p.applicant_email}` : ""}
                       </div>
                     </div>
-                    <span className="text-[11px] font-semibold text-text-muted">
-                      {p.invite_status || "—"}
-                    </span>
                   </li>
                 ))}
-                {(session.participants ?? []).length === 0 && (
-                  <li className="px-4 py-4 text-[13px] text-text-muted">No participants assigned.</li>
-                )}
               </ul>
-
-              <p className="mt-4 text-[12.5px] text-text-muted leading-relaxed">
-                Flow: candidates join from the campus portal into the room first. When everyone is
-                ready, click <span className="font-semibold text-text">Start discussion</span> — that
-                reveals the topic and starts the timer on their screens. Use{" "}
-                <span className="font-semibold text-text">Open in Teams</span> to join as the
-                organizer/moderator.
-              </p>
             </>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function GroupDiscussionHostPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-text-muted">Loading…</div>}>
+      <HostPageInner />
+    </Suspense>
   );
 }

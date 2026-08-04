@@ -55,6 +55,7 @@ export default function OverviewPage() {
     { key: "passed_screening", label: "Passed Screening", value: passedScreening },
     { key: "campus_test", label: "Campus Test", value: counts.campus_test },
     { key: "campus_interview", label: "Campus Interview", value: counts.campus_interview },
+    { key: "group_discussion", label: "Group Discussion", value: counts.group_discussion },
     { key: "final_interview", label: "Final Interview", value: counts.final_interview },
     { key: "offered", label: "Offered", value: counts.offered },
   ];

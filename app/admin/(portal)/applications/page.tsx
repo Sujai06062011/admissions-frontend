@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   callForInterview,
@@ -34,7 +35,13 @@ import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { CandidateDrawer } from "@/components/admin/CandidateDrawer";
 import { ChevronDownIcon, CloseIcon, SearchIcon, SlidersIcon } from "@/components/admin/icons";
 
-type StageTabKey = "screening" | "campus_test" | "campus_interview" | "final_interview" | "offered";
+type StageTabKey =
+  | "screening"
+  | "campus_test"
+  | "campus_interview"
+  | "group_discussion"
+  | "final_interview"
+  | "offered";
 
 type PendingAction =
   | { type: "move_to_campus"; candidate: CandidateWithMatch }
@@ -161,6 +168,7 @@ const SCREENING_STAGE_FILTERS: PipelineStage[] = [
   "screening_passed",
   "campus_test",
   "campus_interview",
+  "group_discussion",
   "final_interview",
   "offered",
   "screening_rejected",
@@ -169,6 +177,7 @@ const SCREENING_STAGE_FILTERS: PipelineStage[] = [
 const SCREENING_ACTION_FILTERS: ScreeningActionKey[] = [
   "move_to_campus",
   "awaiting_campus_test",
+  "move_to_gd",
   "move_to_final",
   "mark_offered",
   "override",
@@ -322,8 +331,10 @@ function ScreeningFilterMenu({
 }
 
 export default function ApplicationsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<StageTabKey>("screening");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -475,6 +486,7 @@ export default function ApplicationsPage() {
     { key: "screening", label: "Screening", count: counts.screening },
     { key: "campus_test", label: "Campus Test", count: counts.campus_test },
     { key: "campus_interview", label: "Campus Interview", count: counts.campus_interview },
+    { key: "group_discussion", label: "Group Discussion", count: counts.group_discussion },
     { key: "final_interview", label: "Final Interview", count: counts.final_interview },
     { key: "offered", label: "Offered", count: counts.offered },
   ];
@@ -589,6 +601,21 @@ export default function ApplicationsPage() {
           return (
             <button
               type="button"
+              onClick={() =>
+                router.push(
+                  `/admin/group-discussion?track=online&ids=${c.application_id}`,
+                )
+              }
+              className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
+            >
+              Move to Group Discussion
+            </button>
+          );
+        }
+        if (c.stage === "group_discussion") {
+          return (
+            <button
+              type="button"
               onClick={() => setPendingAction({ type: "move_to_final", candidate: c })}
               className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
             >
@@ -676,6 +703,30 @@ export default function ApplicationsPage() {
   ];
 
   const stageColumns: TableColumn<CandidateWithMatch & { rank: number }>[] = [
+    ...(tab === "campus_interview"
+      ? [
+          {
+            key: "select",
+            header: "",
+            render: (c: CandidateWithMatch & { rank: number }) => (
+              <input
+                type="checkbox"
+                checked={selectedIds.has(c.application_id)}
+                onChange={() => {
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(c.application_id)) next.delete(c.application_id);
+                    else next.add(c.application_id);
+                    return next;
+                  });
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="accent-ink"
+              />
+            ),
+          } as TableColumn<CandidateWithMatch & { rank: number }>,
+        ]
+      : []),
     { key: "rank", header: "Rank", render: (c) => <span className="text-text-muted font-semibold">#{c.rank}</span> },
     {
       key: "candidate",
@@ -726,6 +777,21 @@ export default function ApplicationsPage() {
           return (
             <button
               type="button"
+              onClick={() =>
+                router.push(
+                  `/admin/group-discussion?track=online&ids=${c.application_id}`,
+                )
+              }
+              className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
+            >
+              Move to Group Discussion
+            </button>
+          );
+        }
+        if (tab === "group_discussion") {
+          return (
+            <button
+              type="button"
               onClick={() => setPendingAction({ type: "move_to_final", candidate: c })}
               className="text-[12.5px] font-semibold text-ink-light hover:text-ink"
             >
@@ -761,6 +827,30 @@ export default function ApplicationsPage() {
         subtitle={`${PROGRAM_LABEL} · ${allCandidates.length} total received`}
       >
         <div className="flex items-center gap-2">
+          {tab === "campus_interview" && selectedIds.size > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = Array.from(selectedIds).join(",");
+                  router.push(`/admin/group-discussion?track=online&ids=${ids}`);
+                }}
+                className="px-3.5 py-2 rounded-lg bg-ink text-white text-[12.5px] font-semibold hover:bg-ink-dark"
+              >
+                Pack Online GD ({selectedIds.size})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = Array.from(selectedIds).join(",");
+                  router.push(`/admin/group-discussion?track=manual&ids=${ids}`);
+                }}
+                className="px-3.5 py-2 rounded-lg border border-border bg-surface text-[12.5px] font-semibold text-text hover:bg-[#F3F6F6]"
+              >
+                Pack Manual GD ({selectedIds.size})
+              </button>
+            </>
+          )}
           {tab === "screening" && (
             <ScreeningFilterMenu
               stageFilters={stageFilters}
@@ -798,7 +888,14 @@ export default function ApplicationsPage() {
       </AdminTopbar>
 
       <div className="mb-5">
-        <StageTabs tabs={tabs} active={tab} onChange={(k) => setTab(k as StageTabKey)} />
+        <StageTabs
+          tabs={tabs}
+          active={tab}
+          onChange={(k) => {
+            setTab(k as StageTabKey);
+            setSelectedIds(new Set());
+          }}
+        />
       </div>
 
       {actionError && (

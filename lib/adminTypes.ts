@@ -134,6 +134,7 @@ export interface PreferenceMatchResultResponse {
 
 export type DecisionStage =
   | "stage2_move_to_campus"
+  | "stage_group_discussion"
   | "stage3_call_for_interview"
   | "stage4_offer";
 export type DecisionOutcome = "approved" | "rejected" | "manual_override";

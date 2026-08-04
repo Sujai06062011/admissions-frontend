@@ -17,16 +17,23 @@ export type PipelineStage =
   | "screening_rejected"
   | "campus_test"
   | "campus_interview"
+  | "group_discussion"
   | "final_interview"
   | "offered";
 
 export const STAGE_TAB_LABELS: Record<
-  "screening" | "campus_test" | "campus_interview" | "final_interview" | "offered",
+  | "screening"
+  | "campus_test"
+  | "campus_interview"
+  | "group_discussion"
+  | "final_interview"
+  | "offered",
   string
 > = {
   screening: "Screening",
   campus_test: "Campus Test",
   campus_interview: "Campus Interview",
+  group_discussion: "Group Discussion",
   final_interview: "Final Interview",
   offered: "Offered",
 };
@@ -70,6 +77,7 @@ export function deriveStage(
 
   if (status === "offered") return "offered";
   if (status === "called_for_interview") return "final_interview";
+  if (status === "group_discussion") return "group_discussion";
   if (status === "moved_to_campus" || status === "testing_complete") {
     return test_a_score == null ? "campus_test" : "campus_interview";
   }
@@ -111,21 +119,24 @@ export function countByStage(candidates: CandidateWithMatch[]) {
     screening: candidates.length,
     campus_test: candidates.filter((c) => c.stage === "campus_test").length,
     campus_interview: candidates.filter((c) => c.stage === "campus_interview").length,
+    group_discussion: candidates.filter((c) => c.stage === "group_discussion").length,
     final_interview: candidates.filter((c) => c.stage === "final_interview").length,
     offered: candidates.filter((c) => c.stage === "offered").length,
   };
 }
 
 /**
- * Ready for Outreach → Interview Calls: still on campus (not yet called)
- * and both Campus Test + Video Interview scores are present.
- * Keep sidebar badge and Interview Calls page on this same rule.
+ * Ready for Outreach → Interview Calls: finished (or past) GD, or legacy
+ * campus-complete candidates not yet in a GD session.
  */
 export function isReadyForInterviewCall(candidate: CandidateListItem): boolean {
+  const scoresReady =
+    candidate.test_a_score != null && candidate.test_b_score != null;
+  if (!scoresReady) return false;
   return (
-    (candidate.status === "moved_to_campus" || candidate.status === "testing_complete") &&
-    candidate.test_a_score != null &&
-    candidate.test_b_score != null
+    candidate.status === "group_discussion" ||
+    candidate.status === "moved_to_campus" ||
+    candidate.status === "testing_complete"
   );
 }
 
@@ -212,6 +223,7 @@ export const STAGE_BADGE_LABELS: Record<PipelineStage, string> = {
   screening_rejected: "Hard Reject",
   campus_test: "Campus Test",
   campus_interview: "Campus Interview",
+  group_discussion: "Group Discussion",
   final_interview: "Final Interview",
   offered: "Offered",
 };
@@ -221,6 +233,7 @@ export const STAGE_BADGE_COLORS: Record<PipelineStage, string> = {
   screening_rejected: "bg-brick-soft text-brick",
   campus_test: "bg-gold-soft text-gold",
   campus_interview: "bg-ink-light/15 text-ink-light",
+  group_discussion: "bg-[#E8F0FE] text-[#1A56DB]",
   final_interview: "bg-forest-soft text-forest",
   offered: "bg-forest text-white",
 };
@@ -228,6 +241,7 @@ export const STAGE_BADGE_COLORS: Record<PipelineStage, string> = {
 export type ScreeningActionKey =
   | "move_to_campus"
   | "awaiting_campus_test"
+  | "move_to_gd"
   | "move_to_final"
   | "mark_offered"
   | "override";
@@ -235,6 +249,7 @@ export type ScreeningActionKey =
 export const SCREENING_ACTION_LABELS: Record<ScreeningActionKey, string> = {
   move_to_campus: "Move to Campus Test",
   awaiting_campus_test: "Awaiting Campus Test",
+  move_to_gd: "Move to Group Discussion",
   move_to_final: "Move to Final Interview",
   mark_offered: "Mark as Offered",
   override: "Override & Accept",
@@ -249,6 +264,8 @@ export function screeningActionKey(candidate: CandidateWithMatch): ScreeningActi
     case "campus_test":
       return "awaiting_campus_test";
     case "campus_interview":
+      return "move_to_gd";
+    case "group_discussion":
       return "move_to_final";
     case "final_interview":
       return "mark_offered";
